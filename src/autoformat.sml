@@ -20,7 +20,9 @@ structure AutoFormat :> AUTOFORMAT =
 
       val rec printExp = fn
         A.VarExp path => printPath path
-      | A.FlatAppExp exps => (case exps of [exp] => printExp (#item exp) | _ => raise Invalid "unexpected FlatAppExp")
+      | A.FnExp rules => "fn " ^ printRules rules
+      | A.FlatAppExp exps => String.concatWith " " (List.map (printExp o #item) exps)
+      | A.CaseExp {expr=exp,rules=rules} => "case " ^ printExp exp ^ " of\n" ^ printRules rules
       | A.SeqExp exps => (
           case exps of
             nil => raise Invalid "empty SeqExp"
@@ -28,9 +30,27 @@ structure AutoFormat :> AUTOFORMAT =
           | _   => ListFormat.fmt { init = "(", sep = "; ", final = ")", fmt = printExp} exps
         )
       | A.IntExp (s,_) => s
+      | A.StringExp s => "\"" ^ String.toString s ^ "\""
+      | A.HandleExp {expr=exp,rules=rules} => printExp exp ^ " handle " ^ printRules rules
       | A.MarkExp (exp,_) => printExp exp
-      and printRule = fn
-        A.Rule {pat=pat,exp=exp} => printPat pat ^ " => " ^ printExp exp
+      and printRules = fn
+        nil   => raise Invalid "empty rules"
+      | rules => (
+          let
+            val printed = List.map (fn A.Rule {pat=pat,exp=exp} => {pat=printPat pat, exp=printExp exp}) rules
+            val pad =
+              printed
+              |> List.map (String.size o #pat)
+              |> List.foldr Int.max 0
+              |> StringCvt.padRight #" "
+          in
+            "  " ^ String.concatWith "\n| " (
+              List.map
+                (fn {pat=pat,exp=exp} => pad pat ^ " => " ^ exp)
+                printed
+            )
+          end
+        )
       and printPat = fn
         A.WildPat => "_"
       | A.VarPat path => printPath path
