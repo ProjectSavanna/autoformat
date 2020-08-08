@@ -21,6 +21,12 @@ structure AutoFormat :> AUTOFORMAT =
       val rec printExp = fn
         A.VarExp path => printPath path
       | A.FlatAppExp exps => (case exps of [exp] => printExp (#item exp) | _ => raise Invalid "unexpected FlatAppExp")
+      | A.SeqExp exps => (
+          case exps of
+            nil => raise Invalid "empty SeqExp"
+          | [e] => printExp e
+          | _   => ListFormat.fmt { init = "(", sep = "; ", final = ")", fmt = printExp} exps
+        )
       | A.IntExp (s,_) => s
       | A.MarkExp (exp,_) => printExp exp
       and printRule = fn
