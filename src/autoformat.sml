@@ -19,25 +19,37 @@ structure AutoFormat :> AUTOFORMAT =
       val tupleToString = fn toString => ListFormat.fmt { init = "(", sep = ", ", final = ")", fmt = toString}
 
       val rec printExp = fn
-        A.VarExp path => printPath path
-      | A.FnExp rules => "fn " ^ printRules rules
-      | A.FlatAppExp exps => String.concatWith " " (List.map (printExp o #item) exps)
-      | A.CaseExp {expr=exp,rules=rules} => "case " ^ printExp exp ^ " of\n" ^ printRules rules
+        A.VarExp path => {string = printPath path, safe = true}
+      | A.FnExp rules => {string = "fn " ^ printRules rules, safe = false}
+      | A.FlatAppExp exps => (
+          case exps of
+            nil => raise Invalid "empty FlatAppExp"
+          | [exp] => printExp (#item exp)
+          | _     => {string = String.concatWith " " (List.map (wrapExp o printExp o #item) exps), safe = false}
+        )
+      | A.CaseExp {expr=exp,rules=rules} => {string = "case " ^ wrapExp (printExp exp) ^ " of\n" ^ printRules rules, safe = false}
       | A.SeqExp exps => (
           case exps of
             nil => raise Invalid "empty SeqExp"
           | [e] => printExp e
-          | _   => ListFormat.fmt { init = "(", sep = "; ", final = ")", fmt = printExp} exps
+          | _   => {string = ListFormat.fmt { init = "(", sep = "; ", final = ")", fmt = #string o printExp} exps, safe = true}
         )
-      | A.IntExp (s,_) => s
-      | A.StringExp s => "\"" ^ String.toString s ^ "\""
-      | A.HandleExp {expr=exp,rules=rules} => printExp exp ^ " handle " ^ printRules rules
+      | A.IntExp (s,_) => {string = s, safe = true}
+      | A.StringExp s => {string = "\"" ^ String.toString s ^ "\"", safe = true}
+      | A.HandleExp {expr=exp,rules=rules} => {string = wrapExp (printExp exp) ^ " handle " ^ printRules rules, safe = false}
       | A.MarkExp (exp,_) => printExp exp
-      and printRules = fn
-        nil   => raise Invalid "empty rules"
-      | rules => (
+      and wrapExp = fn
+        {string = string, safe = false} => "(" ^ string ^ ")"
+      | {string = string, safe = true } => string
+      and printRules = fn rules => (
           let
-            val printed = List.map (fn A.Rule {pat=pat,exp=exp} => {pat=printPat pat, exp=printExp exp}) rules
+            val wrap =
+              case rules of
+                nil => raise Invalid "empty rules"
+              | [r] => #string
+              | _   => wrapExp
+
+            val printed = List.map (fn A.Rule {pat=pat,exp=exp} => {pat=printPat pat, exp=wrap (printExp exp)}) rules
             val pad =
               printed
               |> List.map (String.size o #pat)
@@ -77,7 +89,7 @@ structure AutoFormat :> AUTOFORMAT =
       | A.SeqDec decs => decs |> List.map (fn dec => printDec dec ^ "\n") |> String.concat
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
-        A.Vb {pat=pat,exp=exp,lazyp=false} => printPat pat ^ " = " ^ printExp exp
+        A.Vb {pat=pat,exp=exp,lazyp=false} => printPat pat ^ " = " ^ #string (printExp exp)
       | A.MarkVb (vb,_) => printVb vb
       and printRvb = fn _ => raise TODO
       and printFb = fn _ => raise TODO
