@@ -113,7 +113,13 @@ structure AutoFormat :> AUTOFORMAT =
       | A.TupleExp exps => iterFormat { init = "(", sep = ",", final = ")", fmt = #string o printExp} exps
       | A.SelectorExp sym => {string = ["#" ^ Symbol.name sym], safe = true}
       | A.ConstraintExp {expr=exp,constraint=ty} => {string = putOnLast (" : " ^ printTy ty) (printExp' exp), safe = false}
-      (* | A.HandleExp {expr=exp,rules=rules} => {string = printExp' exp ^ " handle " ^ printRules rules, safe = false} *)
+      | A.HandleExp {expr=exp,rules=rules} => {
+          string =
+            case printExp' exp of
+              [line] => putOnFirst line (concatMapWith (StringCvt.padLeft #" " (8 + String.size line) "      | ") " handle " (Fn.uncurry putOnFirst) (printRules rules))
+            | lines  => lines @ concatMapWith "     | " "handle " (Fn.uncurry putOnFirst) (printRules rules),
+          safe = false
+        }
       | A.RaiseExp exp => {string = putOnFirst "raise " (#string (printExp exp)), safe = false}
       | A.IfExp {test=test,thenCase=thenCase,elseCase=elseCase} => {
           string =
