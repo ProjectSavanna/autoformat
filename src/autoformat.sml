@@ -345,6 +345,12 @@ structure AutoFormat :> AUTOFORMAT =
                | (kw,{init=init,exp=lines}) => kw ^ init ^ " =" :: indent lines
             )
         )
+      | A.DoDec _ => raise Invalid "unsupported declaration: 'do'"
+      | A.FunDec (fbs,tyvars) => (
+          fbs
+          |> List.map printFb
+          |> concatMapAnd ("fun " ^ printTys (List.map A.VarTy tyvars)) (Fn.uncurry putOnFirst)
+        )
       | A.StrDec strbs => (
           strbs
           |> List.map printStrb
@@ -395,8 +401,18 @@ structure AutoFormat :> AUTOFORMAT =
           exp = #string (printExp exp)
         }
       | A.MarkRvb (rvb,_) => printRvb rvb
-      and printFb = fn _ => raise TODO
-      and printClause = fn _ => raise TODO
+      and printFb = fn
+        A.Fb (clauses,_) => concatMapWith "  | " "" (fn (kw,clause) => (putOnFirst kw o printClause) clause) clauses
+      | A.MarkFb (fb,_) => printFb fb
+      and printClause = fn
+        A.Clause {pats=pats,resultty=resulttyOpt,exp=exp} =>
+        putOnFirst (
+          String.concatWithMap " " (printPat' o #item) pats ^ (
+            case resulttyOpt of
+              NONE => ""
+            | SOME ty => " : " ^ printTy ty
+          ) ^ " = "
+        ) (printExp' exp)
       and printTb = fn _ => raise TODO
       and printDb = fn
         A.Db {tyc=tyc, tyvars=tyvars, rhs=rhs, lazyp=_} => [
