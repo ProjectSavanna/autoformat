@@ -118,7 +118,11 @@ structure AutoFormat :> AUTOFORMAT =
       | A.StringExp s => {string = ["\"" ^ String.toString s ^ "\""], safe = true}
       | A.CharExp s => {string = ["#\"" ^ String.toString s ^ "\""], safe = true}
       | A.ListExp exps => iterFormat { init = "[", sep = ",", final = "]", fmt = #string o printExp} exps
-      | A.RecordExp l => iterFormat { init = "{ ", sep = ",", final = " }", fmt = (fn (sym,exp) => case #string (printExp exp) of [line] => [Symbol.name sym ^ " = " ^ line] | lines => Symbol.name sym ^ " =" :: indent lines)} l
+      | A.RecordExp l => (
+          case l of
+            nil => {string = ["()"], safe = true}
+          | _   => iterFormat { init = "{ ", sep = ",", final = " }", fmt = (fn (sym,exp) => case #string (printExp exp) of [line] => [Symbol.name sym ^ " = " ^ line] | lines => Symbol.name sym ^ " =" :: indent lines)} l
+        )
       | A.TupleExp exps => iterFormat { init = "(", sep = ",", final = ")", fmt = #string o printExp} exps
       | A.SelectorExp sym => {string = ["#" ^ Symbol.name sym], safe = true}
       | A.ConstraintExp {expr=exp,constraint=ty} => {string = putOnLast (" : " ^ printTy ty) (printExp' exp), safe = false}
@@ -194,7 +198,13 @@ structure AutoFormat :> AUTOFORMAT =
       | A.WordPat (s,_) => {string = s, safe = true}
       | A.StringPat s => {string = "\"" ^ String.toString s ^ "\"", safe = true}
       | A.CharPat s => {string = "#\"" ^ String.toString s ^ "\"", safe = true}
-      | A.RecordPat {def=defs,flexibility=flexibility} => {string = ListFormat.fmt { init = "{", sep = ", ", final = if flexibility then ", ...}" else "}", fmt = fn (sym,pat) => Symbol.name sym ^ " = " ^ #string (printPat pat)} defs, safe = true}
+      | A.RecordPat {def=defs,flexibility=flexibility} => {
+          string =
+            case defs of
+              nil => "()"
+            | _   => ListFormat.fmt { init = "{", sep = ", ", final = if flexibility then ", ...}" else "}", fmt = fn (sym,pat) => Symbol.name sym ^ " = " ^ #string (printPat pat)} defs,
+          safe = true
+        }
       | A.ListPat pats => {string = listToString (#string o printPat) pats, safe = true}
       | A.TuplePat pats => {string = tupleToString (#string o printPat) pats, safe = true}
       | A.FlatAppPat pats => (
