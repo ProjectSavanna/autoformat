@@ -20,6 +20,10 @@ structure AutoFormat :> AUTOFORMAT =
       | [x] => [x ^ s]
       | x :: xs => x :: putOnLast s xs
 
+      val rec separateWithNewlines = fn f => fn
+        nil     => nil
+      | x :: xs => List.tl (List.concatMap (Fn.curry (op ::) "" o f) (x :: xs))
+
       val removeWhitespace = String.translate (fn #" " => "" | c => str c)
       fun commas sep [] = []
         | commas sep [x] = x
@@ -239,7 +243,7 @@ structure AutoFormat :> AUTOFORMAT =
           )
         )
       | A.BaseSig specs => (
-          case List.concatMap printSpec specs of
+          case separateWithNewlines printSpec specs of
             nil   => ["sig end"]
           | lines => "sig" :: indent lines @ ["end"]
         )
@@ -343,12 +347,7 @@ structure AutoFormat :> AUTOFORMAT =
             )
         )
       | A.LocalDec (dec1,dec2) => "local" :: indent (printDec dec1) @ ["in"] @ indent (printDec dec2) @ ["end"]
-      | A.SeqDec decs => (
-          case List.concatMap (Fn.curry (op ::) "" o printDec) decs of
-            nil     => nil
-          | "" :: l => l
-          | l       => l
-        )
+      | A.SeqDec decs => separateWithNewlines printDec decs
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
         A.Vb {pat=pat,exp=exp,lazyp=_} => { pat = #string (printPat pat), exp = #string (printExp exp) }
