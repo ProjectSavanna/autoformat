@@ -27,7 +27,9 @@ structure AutoFormat :> AUTOFORMAT =
           | [exp] => printExp (#item exp)
           | _     => {string = String.concatWith " " (List.map (printExp' o #item) exps), safe = false}
         )
-      | A.CaseExp {expr=exp,rules=rules} => {string = "case " ^ printExp' exp ^ " of\n" ^ printRules rules, safe = false}
+      | A.AppExp {function=function,argument=argument} => {string = printExp' function ^ " " ^ printExp' argument, safe = false}
+      | A.CaseExp {expr=expr,rules=rules} => {string = "case " ^ printExp' expr ^ " of\n" ^ printRules rules, safe = false}
+      | A.LetExp {dec=dec, expr=expr} => {string = "let " ^ printDec dec ^ " in " ^ printExp' expr ^ " end", safe = true}
       | A.SeqExp exps => (
           case exps of
             nil => raise Invalid "empty SeqExp"
@@ -35,8 +37,22 @@ structure AutoFormat :> AUTOFORMAT =
           | _   => {string = ListFormat.fmt { init = "(", sep = "; ", final = ")", fmt = #string o printExp} exps, safe = true}
         )
       | A.IntExp (s,_) => {string = s, safe = true}
+      | A.WordExp (s,_) => {string = s, safe = true}
+      | A.RealExp (s,_) => {string = s, safe = true}
       | A.StringExp s => {string = "\"" ^ String.toString s ^ "\"", safe = true}
+      | A.CharExp s => {string = "#\"" ^ String.toString s ^ "\"", safe = true}
+      | A.RecordExp l => {string = ListFormat.fmt { init = "{ ", sep = ", ", final = " }", fmt = fn (sym,exp) => Symbol.name sym ^ " = " ^ #string (printExp exp)} l, safe = true}
+      | A.ListExp exps => {string = listToString (#string o printExp) exps, safe = true}
+      | A.TupleExp exps => {string = tupleToString (#string o printExp) exps, safe = true}
+      | A.SelectorExp sym => {string = "#" ^ Symbol.name sym, safe = true}
+      | A.ConstraintExp {expr=exp,constraint=ty} => {string = printExp' exp ^ " : " ^ printTy ty, safe = false}
       | A.HandleExp {expr=exp,rules=rules} => {string = printExp' exp ^ " handle " ^ printRules rules, safe = false}
+      | A.RaiseExp exp => {string = "raise " ^ #string (printExp exp), safe = false}
+      | A.IfExp {test=test,thenCase=thenCase,elseCase=elseCase} => {string = "if " ^ #string (printExp test) ^ " then " ^ #string (printExp thenCase) ^ " else " ^ #string (printExp elseCase), safe = false}
+      | A.AndalsoExp (e1,e2) => {string = #string (printExp e1) ^ " andalso " ^ #string (printExp e2), safe = false}
+      | A.OrelseExp (e1,e2) => {string = #string (printExp e1) ^ " orelse " ^ #string (printExp e2), safe = false}
+      | A.VectorExp exps => {string = "#" ^ listToString (#string o printExp) exps, safe = true}
+      | A.WhileExp {test=test,expr=expr} => {string = "while " ^ #string (printExp test) ^ " do " ^ #string (printExp expr), safe = false}
       | A.MarkExp (exp,_) => printExp exp
       and printExp' = fn exp => wrapExp (printExp exp)
       and wrapExp = fn
