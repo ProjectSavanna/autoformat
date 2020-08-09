@@ -11,6 +11,11 @@ structure AutoFormat :> AUTOFORMAT =
       exception Invalid of string
       exception TODO
 
+      val printTys = fn f => fn
+        nil     => ""
+      | [tyvar] => f tyvar ^ " "
+      | tyvars  => "(" ^ String.concatWithMap "," f tyvars ^ ") "
+
       val indent = List.map (fn "" => "" | s => "  " ^ s)
       val rec putOnFirst = fn s => fn
         nil => nil
@@ -250,7 +255,7 @@ structure AutoFormat :> AUTOFORMAT =
       | A.MarkStr (strexp,_) => printStrexp strexp
       and printFctexp = fn _ => raise TODO
       and printWherespec = fn
-        A.WhType (path,tyvars,ty) => "type " ^ printTys (List.map A.VarTy tyvars) ^ printPath path ^ " = " ^ printTy ty
+        A.WhType (path,tyvars,ty) => "type " ^ printTys printTyvar tyvars ^ printPath path ^ " = " ^ printTy ty
       | A.WhStruct (src,dst) => printPath src ^ " = " ^ printPath dst
       and printSigexp = fn
         A.VarSig sym => [Symbol.name sym]
@@ -281,7 +286,7 @@ structure AutoFormat :> AUTOFORMAT =
       | A.TycSpec (types,eq) => (
           types
           |> concatMapAnd (if eq then "eqtype " else "type ") (
-              fn (kw,(name,tyvars,tyOpt)) => [kw ^ printTys (List.map A.VarTy tyvars) ^ Symbol.name name
+              fn (kw,(name,tyvars,tyOpt)) => [kw ^ printTys printTyvar tyvars ^ Symbol.name name
                 ^ (case tyOpt of NONE => "" | SOME ty => " = " ^ printTy ty)]
             )
         )
@@ -332,7 +337,7 @@ structure AutoFormat :> AUTOFORMAT =
         A.ValDec (vbs,tyvars) => (
           vbs
           |> List.map printVb
-          |> concatMapAnd ("val " ^ printTys (List.map A.VarTy tyvars)) (
+          |> concatMapAnd ("val " ^ printTys printTyvar tyvars) (
               fn (kw,{pat=pat,exp=[line]}) => [kw ^ pat ^ " = " ^ line]
                | (kw,{pat=pat,exp=lines}) => kw ^ pat ^ " =" :: indent lines
             )
@@ -340,7 +345,7 @@ structure AutoFormat :> AUTOFORMAT =
       | A.ValrecDec (rbvs,tyvars) => (
           rbvs
           |> List.map printRvb
-          |> concatMapAnd ("val rec " ^ printTys (List.map A.VarTy tyvars)) (
+          |> concatMapAnd ("val rec " ^ printTys printTyvar tyvars) (
               fn (kw,{init=init,exp=[line]}) => [kw ^ init ^ " = " ^ line]
                | (kw,{init=init,exp=lines}) => kw ^ init ^ " =" :: indent lines
             )
@@ -349,7 +354,12 @@ structure AutoFormat :> AUTOFORMAT =
       | A.FunDec (fbs,tyvars) => (
           fbs
           |> List.map printFb
-          |> concatMapAnd ("fun " ^ printTys (List.map A.VarTy tyvars)) (Fn.uncurry putOnFirst)
+          |> concatMapAnd ("fun " ^ printTys printTyvar tyvars) (Fn.uncurry putOnFirst)
+        )
+      | A.TypeDec tbs => (
+          tbs
+          |> List.map printTb
+          |> concatMapAnd "type " (fn (kw,str) => [kw ^ str])
         )
       | A.StrDec strbs => (
           strbs
@@ -413,10 +423,12 @@ structure AutoFormat :> AUTOFORMAT =
             | SOME ty => " : " ^ printTy ty
           ) ^ " = "
         ) (printExp' exp)
-      and printTb = fn _ => raise TODO
+      and printTb = fn
+        A.Tb {tyc=tyc,def=def,tyvars=tyvars} => printTys printTyvar tyvars ^ Symbol.name tyc ^ " = " ^ printTy def
+      | A.MarkTb (tb,_) => printTb tb
       and printDb = fn
         A.Db {tyc=tyc, tyvars=tyvars, rhs=rhs, lazyp=_} => [
-          printTys (List.map A.VarTy tyvars) ^ Symbol.name tyc ^ " = " ^
+          printTys printTyvar tyvars ^ Symbol.name tyc ^ " = " ^
             String.concatWithMap " | " (fn (name,NONE) => Symbol.name name | (name,SOME ty) => Symbol.name name ^ " of " ^ printTy ty) rhs
         ]
       | A.MarkDb (db,_) => printDb db
@@ -434,13 +446,9 @@ structure AutoFormat :> AUTOFORMAT =
       | A.MarkTyv (tyvar,_) => printTyvar tyvar
       and printTy = fn
         A.VarTy tyvar => printTyvar tyvar
-      | A.ConTy (path,tyvars) => printTys tyvars ^ printPath path
+      | A.ConTy (path,tyvars) => printTys printTy tyvars ^ printPath path
       | A.TupleTy tys => String.concatWithMap " * " printTy tys
       | A.MarkTy (ty,_) => printTy ty
-      and printTys = fn
-        nil     => ""
-      | [tyvar] => printTy tyvar ^ " "
-      | tyvars  => "(" ^ String.concatWithMap "," printTy tyvars ^ ") "
     in
       val toString = String.concat o List.map (fn s => s ^ "\n") o printDec
     end
