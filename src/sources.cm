@@ -7,6 +7,7 @@ is
   $/basis.cm
   $SMLNJ-LIB/Util/smlnj-lib.cm
   $smlnj/compiler/current.cm
+  $smlnj/viscomp/basics.cm
   $smlnj/viscomp/parser.cm
 
   autoformat.sig

@@ -396,6 +396,7 @@ structure AutoFormat :> AUTOFORMAT =
         )
       | A.LocalDec (dec1,dec2) => "local" :: indent (printDec dec1) @ ["in"] @ indent (printDec dec2) @ ["end"]
       | A.SeqDec decs => separateWithNewlines printDec decs
+      | A.FixDec {fixity=fixity, ops=ops} => [Fixity.fixityToString fixity ^ String.concatWithMap " " Symbol.name ops]
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
         A.Vb {pat=pat,exp=exp,lazyp=_} => { pat = #string (printPat pat), exp = #string (printExp exp) }
