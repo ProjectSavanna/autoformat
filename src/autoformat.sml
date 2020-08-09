@@ -361,6 +361,11 @@ structure AutoFormat :> AUTOFORMAT =
           |> List.map printTb
           |> concatMapAnd "type " (fn (kw,str) => [kw ^ str])
         )
+      | A.ExceptionDec ebs => (
+          ebs
+          |> List.map printEb
+          |> concatMapAnd "exception " (fn (kw,str) => [kw ^ str])
+        )
       | A.StrDec strbs => (
           strbs
           |> List.map printStrb
@@ -432,7 +437,14 @@ structure AutoFormat :> AUTOFORMAT =
             String.concatWithMap " | " (fn (name,NONE) => Symbol.name name | (name,SOME ty) => Symbol.name name ^ " of " ^ printTy ty) rhs
         ]
       | A.MarkDb (db,_) => printDb db
-      and printEb = fn _ => raise TODO
+      and printEb = fn
+        A.EbGen {exn=exn,etype=etypeOpt} => Symbol.name exn ^ (
+          case etypeOpt of
+            NONE => ""
+          | SOME ty => " of " ^ printTy ty
+        )
+      | A.EbDef {exn=exn,edef=edef} => Symbol.name exn ^ " = " ^ printPath edef
+      | A.MarkEb (eb,_) => printEb eb
       and printStrb = fn
         A.Strb {name=name,def=def,constraint=constraint} => {name=Symbol.name name, def=printStrexp def, constraint=printSigConst constraint}
       | A.MarkStrb (strb,_) => printStrb strb
