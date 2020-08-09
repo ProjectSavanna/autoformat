@@ -59,7 +59,17 @@ structure AutoFormat :> AUTOFORMAT =
 
       val rec printExp = fn
         A.VarExp path => {string = [printPath path], safe = true}
-      (* | A.FnExp rules => {string = "fn " ^ printRules rules, safe = false} *)
+      | A.FnExp rules => {
+          string =
+            case printRules rules of
+              [rule] => (
+                case rule of
+                  [line] => ["fn " ^ line]
+                | lines  => putOnFirst "fn " lines
+              )
+            | lines  => concatMapWith " | " "fn " (Fn.uncurry putOnFirst) lines,
+          safe = false
+        }
       | A.FlatAppExp exps => (
           case exps of
             nil => raise Invalid "empty FlatAppExp"
