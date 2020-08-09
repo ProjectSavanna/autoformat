@@ -53,7 +53,8 @@ structure AutoFormat :> AUTOFORMAT =
         {string = string, safe = false} => "(" ^ string ^ ")"
       | {string = string, safe = true } => string
       val wrapList = fn
-        {string = string, safe = false} => "(" :: indent string @ [")"]
+        {string = [line], safe = false} => ["(" ^ line ^ ")"]
+      | {string = string, safe = false} => "(" :: indent string @ [")"]
       | {string = string, safe = true } => string
 
       val rec printExp = fn
