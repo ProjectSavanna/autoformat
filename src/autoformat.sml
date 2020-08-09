@@ -113,8 +113,8 @@ structure AutoFormat :> AUTOFORMAT =
         A.VarStr path => printPath path
       | A.BaseStr dec => "struct " ^ printDec dec ^ " end"
       | A.ConstrainedStr (strexp,sigconst) => printStrexp strexp ^ printSigConst sigconst
-      | A.AppStr (path,args) => printPath path ^ " " ^ String.concatWithMap " " (fn (strexp,b) => "(" ^ (if b then "struct" else "") ^ printStrexp strexp ^ (if b then "end" else "") ^ ")") args
-      | A.AppStrI (path,args) => printPath path ^ " " ^ String.concatWithMap " " (fn (strexp,b) => "(" ^ (if b then "struct" else "") ^ printStrexp strexp ^ (if b then "end" else "") ^ ")") args
+      | A.AppStr (path,args) => printPath path ^ " " ^ String.concatWithMap " " (fn (strexp,_) => "(" ^ printStrexp strexp ^ ")") args
+      | A.AppStrI (path,args) => printPath path ^ " " ^ String.concatWithMap " " (fn (strexp,_) => "(" ^ printStrexp strexp ^ ")") args
       | A.LetStr (dec,strexp) => "let " ^ printDec dec ^ " in " ^ printStrexp strexp ^ " end"
       | A.MarkStr (strexp,_) => printStrexp strexp
       and printFctexp = fn _ => raise TODO
@@ -127,7 +127,22 @@ structure AutoFormat :> AUTOFORMAT =
       | A.BaseSig specs => "sig " ^ String.concatWithMap " " printSpec specs ^ " end"
       | A.MarkSig (sigexp,_) => printSigexp sigexp
       and printFsigexp = fn _ => raise TODO
-      and printSpec = fn _ => raise TODO
+      and printSpec = fn
+        A.StrSpec structures => "structure " ^ String.concatWithMap "\nand " (fn (name,sigexp,pathOpt) => Symbol.name name ^ " : " ^ printSigexp sigexp ^ (case pathOpt of NONE => "" | SOME path => " = " ^ printPath path)) structures
+      | A.TycSpec (types,eq) => (if eq then "eqtype" else "type") ^ " " ^ String.concatWithMap "\nand " (fn (name,tyvars,tyOpt) => printTys (List.map A.VarTy tyvars) ^ Symbol.name name ^ (case tyOpt of NONE => "" | SOME ty => " = " ^ printTy ty)) types
+      | A.FctSpec _ => raise Invalid "<fctsig> ignored"
+      | A.ValSpec vals => "val " ^ String.concatWithMap "\nand " (fn (name,ty) => Symbol.name name ^ " : " ^ printTy ty) vals
+      | A.DataSpec {datatycs=datatycs, withtycs=withtycs} => (
+          case withtycs of
+            nil => "datatype " ^ String.concatWithMap "\nand " printDb datatycs
+          | _ => raise Invalid "nonempty withtycs"
+        )
+      | A.DataReplSpec (name,path) => "datatype " ^ Symbol.name name ^ " = datatype " ^ printPath path
+      | A.ExceSpec exns => "exception " ^ String.concatWithMap "\nand " (fn (name,NONE) => Symbol.name name | (name,SOME ty) => Symbol.name name ^ " of " ^ printTy ty) exns
+      | A.ShareStrSpec paths => "sharing " ^ String.concatWithMap " = " printPath paths
+      | A.ShareTycSpec paths => "sharing type " ^ String.concatWithMap " = " printPath paths
+      | A.IncludeSpec sigexp => "include " ^ printSigexp sigexp
+      | A.MarkSpec (spec,_) => printSpec spec
       and printSigConst = fn
         A.NoSig          => ""
       | A.Transparent sg => ": " ^ printSigexp sg ^ " "
@@ -139,13 +154,18 @@ structure AutoFormat :> AUTOFORMAT =
       | A.SeqDec decs => decs |> List.map (fn dec => printDec dec ^ "\n") |> String.concat
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
-        A.Vb {pat=pat,exp=exp,lazyp=false} => #string (printPat pat) ^ " = " ^ #string (printExp exp)
+        A.Vb {pat=pat,exp=exp,lazyp=_} => #string (printPat pat) ^ " = " ^ #string (printExp exp)
       | A.MarkVb (vb,_) => printVb vb
       and printRvb = fn _ => raise TODO
       and printFb = fn _ => raise TODO
       and printClause = fn _ => raise TODO
       and printTb = fn _ => raise TODO
-      and printDb = fn _ => raise TODO
+      and printDb = fn
+        A.Db {tyc=tyc, tyvars=tyvars, rhs=rhs, lazyp=_} => (
+          printTys (List.map A.VarTy tyvars) ^ Symbol.name tyc ^ " = " ^
+            String.concatWithMap " | " (fn (name,NONE) => Symbol.name name | (name,SOME ty) => Symbol.name name ^ " of " ^ printTy ty) rhs
+        )
+      | A.MarkDb (db,_) => printDb db
       and printEb = fn _ => raise TODO
       and printStrb = fn
         A.Strb {name=name,def=def,constraint=constraint} => Symbol.name name ^ printSigConst constraint ^ " = " ^ printStrexp def
