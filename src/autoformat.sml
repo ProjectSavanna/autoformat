@@ -214,7 +214,7 @@ structure AutoFormat :> AUTOFORMAT =
           | _     => {string = String.concatWith " " (List.map (printPat' o #item) pats), safe = false}
         )
       | A.AppPat {constr=constr,argument=argument} => {string = printPat' constr ^ " " ^ printPat' argument, safe = false}
-      | A.ConstraintPat {pattern=pat,constraint=ty} => {string = printPat' pat ^ " : " ^ printTy ty, safe = true}
+      | A.ConstraintPat {pattern=pat,constraint=ty} => {string = printPat' pat ^ " : " ^ printTy ty, safe = false}
       | A.LayeredPat {varPat=varPat,expPat=expPat} => {string = printPat' varPat ^ " as " ^ printPat' expPat, safe = false}
       | A.VectorPat pats => raise Invalid "vectors not supported"
       | A.MarkPat (pat,_) => printPat pat
