@@ -25,9 +25,9 @@ structure AutoFormat :> AUTOFORMAT =
           case exps of
             nil => raise Invalid "empty FlatAppExp"
           | [exp] => printExp (#item exp)
-          | _     => {string = String.concatWith " " (List.map (wrapExp o printExp o #item) exps), safe = false}
+          | _     => {string = String.concatWith " " (List.map (printExp' o #item) exps), safe = false}
         )
-      | A.CaseExp {expr=exp,rules=rules} => {string = "case " ^ wrapExp (printExp exp) ^ " of\n" ^ printRules rules, safe = false}
+      | A.CaseExp {expr=exp,rules=rules} => {string = "case " ^ printExp' exp ^ " of\n" ^ printRules rules, safe = false}
       | A.SeqExp exps => (
           case exps of
             nil => raise Invalid "empty SeqExp"
@@ -36,8 +36,9 @@ structure AutoFormat :> AUTOFORMAT =
         )
       | A.IntExp (s,_) => {string = s, safe = true}
       | A.StringExp s => {string = "\"" ^ String.toString s ^ "\"", safe = true}
-      | A.HandleExp {expr=exp,rules=rules} => {string = wrapExp (printExp exp) ^ " handle " ^ printRules rules, safe = false}
+      | A.HandleExp {expr=exp,rules=rules} => {string = printExp' exp ^ " handle " ^ printRules rules, safe = false}
       | A.MarkExp (exp,_) => printExp exp
+      and printExp' = fn exp => wrapExp (printExp exp)
       and wrapExp = fn
         {string = string, safe = false} => "(" ^ string ^ ")"
       | {string = string, safe = true } => string
