@@ -90,9 +90,14 @@ structure AutoFormat :> AUTOFORMAT =
               safe = false
             }
         )
-      (*
-      | A.AppExp {function=function,argument=argument} => {string = printExp' function ^ " " ^ printExp' argument, safe = false}
-      *)
+      | A.AppExp {function=function,argument=argument} => {
+          string =
+            case (printExp' function, printExp' argument) of
+              ([fLine],[aLine]) => [fLine ^ " " ^ aLine]
+            | ([fLine],aLines) => fLine :: indent aLines
+            | (fLines,aLines) => fLines @ indent aLines,
+          safe = false
+        }
       | A.CaseExp {expr=expr,rules=rules} => {
           string =
             case printExp' expr of
