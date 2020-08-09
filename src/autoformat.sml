@@ -109,17 +109,29 @@ structure AutoFormat :> AUTOFORMAT =
           | _ => {string = ListFormat.fmt { init = "(", sep = " | ", final = ")", fmt = #string o printPat} pats, safe = true}
         )
       and printPat' = fn pat => wrap (printPat pat)
-      and printStrexp = fn _ => raise TODO
+      and printStrexp = fn
+        A.VarStr path => printPath path
+      | A.BaseStr dec => "struct " ^ printDec dec ^ " end"
+      | A.ConstrainedStr (strexp,sigconst) => printStrexp strexp ^ printSigConst sigconst
+      | A.AppStr (path,args) => printPath path ^ " " ^ String.concatWithMap " " (fn (strexp,b) => "(" ^ (if b then "struct" else "") ^ printStrexp strexp ^ (if b then "end" else "") ^ ")") args
+      | A.AppStrI (path,args) => printPath path ^ " " ^ String.concatWithMap " " (fn (strexp,b) => "(" ^ (if b then "struct" else "") ^ printStrexp strexp ^ (if b then "end" else "") ^ ")") args
+      | A.LetStr (dec,strexp) => "let " ^ printDec dec ^ " in " ^ printStrexp strexp ^ " end"
+      | A.MarkStr (strexp,_) => printStrexp strexp
       and printFctexp = fn _ => raise TODO
       and printWherespec = fn _ => raise TODO
-      and printSigspec = fn _ => raise TODO
+      and printSigexp = fn _ => raise TODO
       and printFsigexp = fn _ => raise TODO
       and printSpec = fn _ => raise TODO
+      and printSigConst = fn
+        A.NoSig          => ""
+      | A.Transparent sg => ": " ^ printSigexp sg ^ " "
+      | A.Opaque      sg => ":> " ^ printSigexp sg ^ " "
       and printDec = fn
         A.ValDec (vbs,tyvars) => (
           "val " ^ (case printTys (List.map A.VarTy tyvars) of NONE => "" | SOME s => s ^ " ") ^
             String.concatWithMap "\nand " printVb vbs
         )
+      | A.StrDec strbs => "structure " ^ String.concatWithMap "\nand " printStrb strbs
       | A.SeqDec decs => decs |> List.map (fn dec => printDec dec ^ "\n") |> String.concat
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
@@ -131,7 +143,9 @@ structure AutoFormat :> AUTOFORMAT =
       and printTb = fn _ => raise TODO
       and printDb = fn _ => raise TODO
       and printEb = fn _ => raise TODO
-      and printStrb = fn _ => raise TODO
+      and printStrb = fn
+        A.Strb {name=name,def=def,constraint=constraint} => Symbol.name name ^ printSigConst constraint ^ " = " ^ printStrexp def
+      | A.MarkStrb (strb,_) => printStrb strb
       and printFctb = fn _ => raise TODO
       and printSigb = fn _ => raise TODO
       and printFsigb = fn _ => raise TODO
