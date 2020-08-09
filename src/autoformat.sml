@@ -32,7 +32,7 @@ structure AutoFormat :> AUTOFORMAT =
           | _     => {string = String.concatWith " " (List.map (printExp' o #item) exps), safe = false}
         )
       | A.AppExp {function=function,argument=argument} => {string = printExp' function ^ " " ^ printExp' argument, safe = false}
-      | A.CaseExp {expr=expr,rules=rules} => {string = "case " ^ printExp' expr ^ " of\n" ^ printRules rules, safe = false}
+      | A.CaseExp {expr=expr,rules=rules} => {string = "case " ^ printExp' expr ^ " of " ^ printRules rules, safe = false}
       | A.LetExp {dec=dec, expr=expr} => {string = "let " ^ printDec dec ^ " in " ^ printExp' expr ^ " end", safe = true}
       | A.SeqExp exps => (
           case exps of
@@ -74,7 +74,7 @@ structure AutoFormat :> AUTOFORMAT =
               |> List.foldr Int.max 0
               |> StringCvt.padRight #" "
           in
-            "  " ^ String.concatWith "\n| " (
+            "  " ^ String.concatWith " | " (
               List.map
                 (fn {pat=pat,exp=exp} => pad pat ^ " => " ^ exp)
                 printed
@@ -128,17 +128,17 @@ structure AutoFormat :> AUTOFORMAT =
       | A.MarkSig (sigexp,_) => printSigexp sigexp
       and printFsigexp = fn _ => raise TODO
       and printSpec = fn
-        A.StrSpec structures => "structure " ^ String.concatWithMap "\nand " (fn (name,sigexp,pathOpt) => Symbol.name name ^ " : " ^ printSigexp sigexp ^ (case pathOpt of NONE => "" | SOME path => " = " ^ printPath path)) structures
-      | A.TycSpec (types,eq) => (if eq then "eqtype" else "type") ^ " " ^ String.concatWithMap "\nand " (fn (name,tyvars,tyOpt) => printTys (List.map A.VarTy tyvars) ^ Symbol.name name ^ (case tyOpt of NONE => "" | SOME ty => " = " ^ printTy ty)) types
+        A.StrSpec structures => "structure " ^ String.concatWithMap " and " (fn (name,sigexp,pathOpt) => Symbol.name name ^ " : " ^ printSigexp sigexp ^ (case pathOpt of NONE => "" | SOME path => " = " ^ printPath path)) structures
+      | A.TycSpec (types,eq) => (if eq then "eqtype" else "type") ^ " " ^ String.concatWithMap " and " (fn (name,tyvars,tyOpt) => printTys (List.map A.VarTy tyvars) ^ Symbol.name name ^ (case tyOpt of NONE => "" | SOME ty => " = " ^ printTy ty)) types
       | A.FctSpec _ => raise Invalid "<fctsig> ignored"
-      | A.ValSpec vals => "val " ^ String.concatWithMap "\nand " (fn (name,ty) => Symbol.name name ^ " : " ^ printTy ty) vals
+      | A.ValSpec vals => "val " ^ String.concatWithMap " and " (fn (name,ty) => Symbol.name name ^ " : " ^ printTy ty) vals
       | A.DataSpec {datatycs=datatycs, withtycs=withtycs} => (
           case withtycs of
-            nil => "datatype " ^ String.concatWithMap "\nand " printDb datatycs
+            nil => "datatype " ^ String.concatWithMap " and " printDb datatycs
           | _ => raise Invalid "nonempty withtycs"
         )
       | A.DataReplSpec (name,path) => "datatype " ^ Symbol.name name ^ " = datatype " ^ printPath path
-      | A.ExceSpec exns => "exception " ^ String.concatWithMap "\nand " (fn (name,NONE) => Symbol.name name | (name,SOME ty) => Symbol.name name ^ " of " ^ printTy ty) exns
+      | A.ExceSpec exns => "exception " ^ String.concatWithMap " and " (fn (name,NONE) => Symbol.name name | (name,SOME ty) => Symbol.name name ^ " of " ^ printTy ty) exns
       | A.ShareStrSpec paths => "sharing " ^ String.concatWithMap " = " printPath paths
       | A.ShareTycSpec paths => "sharing type " ^ String.concatWithMap " = " printPath paths
       | A.IncludeSpec sigexp => "include " ^ printSigexp sigexp
@@ -148,10 +148,10 @@ structure AutoFormat :> AUTOFORMAT =
       | A.Transparent sg => ": " ^ printSigexp sg ^ " "
       | A.Opaque      sg => ":> " ^ printSigexp sg ^ " "
       and printDec = fn
-        A.ValDec (vbs,tyvars) => "val " ^ printTys (List.map A.VarTy tyvars) ^ String.concatWithMap "\nand " printVb vbs
-      | A.StrDec strbs => "structure " ^ String.concatWithMap "\nand " printStrb strbs
-      | A.SigDec sigbs => "signature " ^ String.concatWithMap "\nand " printSigb sigbs
-      | A.SeqDec decs => decs |> List.map (fn dec => printDec dec ^ "\n") |> String.concat
+        A.ValDec (vbs,tyvars) => "val " ^ printTys (List.map A.VarTy tyvars) ^ String.concatWithMap " and " printVb vbs
+      | A.StrDec strbs => "structure " ^ String.concatWithMap " and " printStrb strbs
+      | A.SigDec sigbs => "signature " ^ String.concatWithMap " and " printSigb sigbs
+      | A.SeqDec decs => decs |> List.map (fn dec => printDec dec ^ " ") |> String.concat
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
         A.Vb {pat=pat,exp=exp,lazyp=_} => #string (printPat pat) ^ " = " ^ #string (printExp exp)
