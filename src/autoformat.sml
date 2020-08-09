@@ -336,6 +336,7 @@ structure AutoFormat :> AUTOFORMAT =
                | (kw,{name=name,def=def   }) => kw ^ name ^ " =" :: indent def
             )
         )
+      | A.LocalDec (dec1,dec2) => "local" :: indent (printDec dec1) @ ["in"] @ indent (printDec dec2) @ ["end"]
       | A.SeqDec decs => (
           case List.concatMap (Fn.curry (op ::) "" o printDec) decs of
             nil     => nil
