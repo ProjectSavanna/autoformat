@@ -11,6 +11,33 @@ structure AutoFormat :> AUTOFORMAT =
       exception Invalid of string
       exception TODO
 
+      val indent = List.map (fn "" => "" | s => "  " ^ s)
+      val rec putOnFirst = fn s => fn
+        nil => nil
+      | x :: xs => s ^ x :: xs
+      val rec putOnLast = fn s => fn
+        nil => nil
+      | [x] => [x ^ s]
+      | x :: xs => x :: putOnLast s xs
+
+      val removeWhitespace = String.translate (fn #" " => "" | c => str c)
+      fun commas sep [] = []
+        | commas sep [x] = x
+        | commas sep (x::xs) = putOnLast sep x @ commas sep xs
+      val iterFormat = fn { init = init, sep = sep, final = final, fmt = fmt } => fn l => (
+        let
+          val l' = List.map fmt l
+        in
+          {
+            string =
+              if List.exists (fn l => List.length l > 1) l'
+                then removeWhitespace init :: indent (commas sep l') @ [removeWhitespace final]
+                else [ListFormat.fmt { init = init, sep = sep ^ " ", final = final, fmt = Fn.id } (List.concat l')],
+            safe = true
+          }
+        end
+      )
+
       val printPath = fn
         nil => raise Invalid "empty path"
       | path => String.concatWithMap "." Symbol.name path
@@ -18,54 +45,109 @@ structure AutoFormat :> AUTOFORMAT =
       val listToString = fn toString => ListFormat.fmt { init = "[", sep = ", ", final = "]", fmt = toString}
       val tupleToString = fn toString => ListFormat.fmt { init = "(", sep = ", ", final = ")", fmt = toString}
 
-      val wrap = fn
+      val concatMapWith = fn sep => fn init => fn f =>
+        List.concatMapi (fn (0,x) => f (init,x) | (_,x) => f (sep,x))
+      val concatMapAnd = fn keyword => concatMapWith "and " keyword  (* eta-expanded to account for NJ bug? *)
+
+      val wrapStr = fn
         {string = string, safe = false} => "(" ^ string ^ ")"
+      | {string = string, safe = true } => string
+      val wrapList = fn
+        {string = string, safe = false} => "(" :: indent string @ [")"]
       | {string = string, safe = true } => string
 
       val rec printExp = fn
-        A.VarExp path => {string = printPath path, safe = true}
-      | A.FnExp rules => {string = "fn " ^ printRules rules, safe = false}
+        A.VarExp path => {string = [printPath path], safe = true}
+      (* | A.FnExp rules => {string = "fn " ^ printRules rules, safe = false} *)
       | A.FlatAppExp exps => (
           case exps of
             nil => raise Invalid "empty FlatAppExp"
           | [exp] => printExp (#item exp)
-          | _     => {string = String.concatWith " " (List.map (printExp' o #item) exps), safe = false}
+          | _     => {
+              string =
+                let
+                  val l' = List.map (printExp' o #item) exps
+                in
+                  if List.exists (fn l => List.length l > 1) l'
+                    then commas " " l'
+                    else [ListFormat.fmt { init = "", sep = " ", final = "", fmt = Fn.id } (List.concat l')]
+                end,
+              safe = false
+            }
         )
+      (*
       | A.AppExp {function=function,argument=argument} => {string = printExp' function ^ " " ^ printExp' argument, safe = false}
-      | A.CaseExp {expr=expr,rules=rules} => {string = "case " ^ printExp' expr ^ " of " ^ printRules rules, safe = false}
-      | A.LetExp {dec=dec, expr=expr} => {string = "let " ^ printDec dec ^ " in " ^ printExp' expr ^ " end", safe = true}
+      *)
+      | A.CaseExp {expr=expr,rules=rules} => {
+          string =
+            case printExp' expr of
+              [line] => "case " ^ line ^ " of" :: concatMapWith "| " "  " (Fn.uncurry putOnFirst) (printRules rules)
+            | lines  => putOnLast " of" (putOnFirst "case " lines) @ concatMapWith "| " "  " (Fn.uncurry putOnFirst) (printRules rules),
+          safe = false
+        }
+      | A.LetExp {dec=dec, expr=expr} => {string = "let" :: indent (printDec dec) @ ["in"] @ indent (printExp' expr) @ ["end"], safe = true}
       | A.SeqExp exps => (
           case exps of
             nil => raise Invalid "empty SeqExp"
           | [e] => printExp e
-          | _   => {string = ListFormat.fmt { init = "(", sep = "; ", final = ")", fmt = #string o printExp} exps, safe = true}
+          | _   => iterFormat { init = "(", sep = ";", final = ")", fmt = #string o printExp} exps
         )
-      | A.IntExp (s,_) => {string = s, safe = true}
-      | A.WordExp (s,_) => {string = s, safe = true}
-      | A.RealExp (s,_) => {string = s, safe = true}
-      | A.StringExp s => {string = "\"" ^ String.toString s ^ "\"", safe = true}
-      | A.CharExp s => {string = "#\"" ^ String.toString s ^ "\"", safe = true}
-      | A.RecordExp l => {string = ListFormat.fmt { init = "{ ", sep = ", ", final = " }", fmt = fn (sym,exp) => Symbol.name sym ^ " = " ^ #string (printExp exp)} l, safe = true}
-      | A.ListExp exps => {string = listToString (#string o printExp) exps, safe = true}
-      | A.TupleExp exps => {string = tupleToString (#string o printExp) exps, safe = true}
-      | A.SelectorExp sym => {string = "#" ^ Symbol.name sym, safe = true}
-      | A.ConstraintExp {expr=exp,constraint=ty} => {string = printExp' exp ^ " : " ^ printTy ty, safe = false}
-      | A.HandleExp {expr=exp,rules=rules} => {string = printExp' exp ^ " handle " ^ printRules rules, safe = false}
-      | A.RaiseExp exp => {string = "raise " ^ #string (printExp exp), safe = false}
-      | A.IfExp {test=test,thenCase=thenCase,elseCase=elseCase} => {string = "if " ^ #string (printExp test) ^ " then " ^ #string (printExp thenCase) ^ " else " ^ #string (printExp elseCase), safe = false}
-      | A.AndalsoExp (e1,e2) => {string = #string (printExp e1) ^ " andalso " ^ #string (printExp e2), safe = false}
-      | A.OrelseExp (e1,e2) => {string = #string (printExp e1) ^ " orelse " ^ #string (printExp e2), safe = false}
-      | A.VectorExp exps => {string = "#" ^ listToString (#string o printExp) exps, safe = true}
-      | A.WhileExp {test=test,expr=expr} => {string = "while " ^ #string (printExp test) ^ " do " ^ #string (printExp expr), safe = false}
+      | A.IntExp (s,_) => {string = [s], safe = true}
+      | A.WordExp (s,_) => {string = [s], safe = true}
+      | A.RealExp (s,_) => {string = [s], safe = true}
+      | A.StringExp s => {string = ["\"" ^ String.toString s ^ "\""], safe = true}
+      | A.CharExp s => {string = ["#\"" ^ String.toString s ^ "\""], safe = true}
+      | A.ListExp exps => iterFormat { init = "[", sep = ",", final = "]", fmt = #string o printExp} exps
+      | A.RecordExp l => iterFormat { init = "{ ", sep = ",", final = " }", fmt = (fn (sym,exp) => case #string (printExp exp) of [line] => [Symbol.name sym ^ " = " ^ line] | lines => Symbol.name sym ^ " =" :: indent lines)} l
+      | A.TupleExp exps => iterFormat { init = "(", sep = ",", final = ")", fmt = #string o printExp} exps
+      | A.SelectorExp sym => {string = ["#" ^ Symbol.name sym], safe = true}
+      | A.ConstraintExp {expr=exp,constraint=ty} => {string = putOnLast (" : " ^ printTy ty) (printExp' exp), safe = false}
+      (* | A.HandleExp {expr=exp,rules=rules} => {string = printExp' exp ^ " handle " ^ printRules rules, safe = false} *)
+      | A.RaiseExp exp => {string = putOnFirst "raise " (#string (printExp exp)), safe = false}
+      | A.IfExp {test=test,thenCase=thenCase,elseCase=elseCase} => {
+          string =
+            case (#string (printExp test), #string (printExp thenCase), #string (printExp elseCase)) of
+              ([testLine],[thenLine],[elseLine]) => ["if " ^ testLine ^ " then " ^ thenLine ^ " else " ^ elseLine]
+            | ([testLine],thenLines,elseLines) => "if " ^ testLine :: indent ("then" :: indent thenLines @ ["else"] @ indent elseLines)
+            | (testLines,thenLines,elseLines) => "if" :: indent (testLines @ "then" :: indent thenLines @ ["else"] @ indent elseLines),
+          safe = false
+        }
+      | A.AndalsoExp (e1,e2) => {
+          string =
+            case (#string (printExp e1), #string (printExp e2)) of
+              ([line1],[line2]) => [line1 ^ " andalso " ^ line2]
+            | ([line1],lines2)  => line1 ^ " andalso" :: lines2
+            | (lines1,[line2])  => lines1 @ ["andalso " ^ line2]
+            | (lines1,lines2)   => lines1 @ [" andalso "] @ lines2,
+          safe = false
+        }
+      | A.OrelseExp (e1,e2) => {
+          string =
+            case (#string (printExp e1), #string (printExp e2)) of
+              ([line1],[line2]) => [line1 ^ " orelse " ^ line2]
+            | ([line1],lines2)  => line1 ^ " orelse" :: lines2
+            | (lines1,[line2])  => lines1 @ ["orelse " ^ line2]
+            | (lines1,lines2)   => lines1 @ [" orelse "] @ lines2,
+          safe = false
+        }
+      | A.VectorExp exps => raise Invalid "vectors not supported"
+      | A.WhileExp {test=test,expr=expr} => {
+          string =
+            case (#string (printExp test), #string (printExp expr)) of
+              ([lineTest],[lineExpr]) => ["while " ^ lineTest ^ " do " ^ lineExpr]
+            | ([lineTest],linesExpr)  => "while " ^ lineTest ^ " do" :: linesExpr
+            | (linesTest,linesExpr)   => "while" :: linesTest @ ["  do"] @ linesExpr,
+          safe = false
+        }
       | A.MarkExp (exp,_) => printExp exp
-      and printExp' = fn exp => wrap (printExp exp)
+      and printExp' = fn exp => wrapList (printExp exp)
       and printRules = fn rules => (
           let
             val wrap' =
               case rules of
                 nil => raise Invalid "empty rules"
               | [r] => #string
-              | _   => wrap
+              | _   => wrapList
 
             val printed = List.map (fn A.Rule {pat=pat,exp=exp} => {pat = #string (printPat pat), exp=wrap' (printExp exp)}) rules
             val pad =
@@ -74,11 +156,9 @@ structure AutoFormat :> AUTOFORMAT =
               |> List.foldr Int.max 0
               |> StringCvt.padRight #" "
           in
-            "  " ^ String.concatWith " | " (
-              List.map
-                (fn {pat=pat,exp=exp} => pad pat ^ " => " ^ exp)
-                printed
-            )
+            List.map
+              (fn {pat=pat,exp=exp} => putOnFirst (pad pat ^ " => ") exp)
+              printed
           end
         )
       and printPat = fn
@@ -100,7 +180,7 @@ structure AutoFormat :> AUTOFORMAT =
       | A.AppPat {constr=constr,argument=argument} => {string = printPat' constr ^ " " ^ printPat' argument, safe = false}
       | A.ConstraintPat {pattern=pat,constraint=ty} => {string = printPat' pat ^ " : " ^ printTy ty, safe = true}
       | A.LayeredPat {varPat=varPat,expPat=expPat} => {string = printPat' varPat ^ " as " ^ printPat' expPat, safe = false}
-      | A.VectorPat pats => {string = "#" ^ listToString (#string o printPat) pats, safe = true}
+      | A.VectorPat pats => raise Invalid "vectors not supported"
       | A.MarkPat (pat,_) => printPat pat
       | A.OrPat pats => (
           case pats of
@@ -108,71 +188,170 @@ structure AutoFormat :> AUTOFORMAT =
           | [pat] => printPat pat
           | _ => {string = ListFormat.fmt { init = "(", sep = " | ", final = ")", fmt = #string o printPat} pats, safe = true}
         )
-      and printPat' = fn pat => wrap (printPat pat)
+      and printPat' = fn pat => wrapStr (printPat pat)
       and printStrexp = fn
-        A.VarStr path => printPath path
-      | A.BaseStr dec => "struct " ^ printDec dec ^ " end"
-      | A.ConstrainedStr (strexp,sigconst) => printStrexp strexp ^ printSigConst sigconst
-      | A.AppStr (path,args) => printPath path ^ " " ^ String.concatWithMap " " (fn (strexp,_) => "(" ^ printStrexp strexp ^ ")") args
-      | A.AppStrI (path,args) => printPath path ^ " " ^ String.concatWithMap " " (fn (strexp,_) => "(" ^ printStrexp strexp ^ ")") args
-      | A.LetStr (dec,strexp) => "let " ^ printDec dec ^ " in " ^ printStrexp strexp ^ " end"
+        A.VarStr path => [printPath path]
+      | A.BaseStr dec => "struct" :: indent (printDec dec) @ ["end"]
+      | A.ConstrainedStr (strexp,sigconst) => (
+          case printSigConst sigconst of
+            [line] => putOnLast line (printStrexp strexp)
+          | lines  => printStrexp strexp @ lines
+        )
+      | (A.AppStr (path,args) | A.AppStrI (path,args)) => (
+          case args of
+            [(strexp,_)] => (
+              case printStrexp strexp of
+                [line] => [printPath path ^ " (" ^ line ^ ")"]
+              | lines  => printPath path ^ " (" :: indent lines @ [")"]
+            )
+          | _ => raise Invalid "higher-order modules not supported"
+        )
+      | A.LetStr (dec,strexp) => "let" :: indent (printDec dec) @ ["in"] @ indent (printStrexp strexp) @ ["end"]
       | A.MarkStr (strexp,_) => printStrexp strexp
       and printFctexp = fn _ => raise TODO
       and printWherespec = fn
         A.WhType (path,tyvars,ty) => "type " ^ printTys (List.map A.VarTy tyvars) ^ printPath path ^ " = " ^ printTy ty
       | A.WhStruct (src,dst) => printPath src ^ " = " ^ printPath dst
       and printSigexp = fn
-        A.VarSig sym => Symbol.name sym
-      | A.AugSig (sigexp,wherespecs) => printSigexp sigexp ^ " where " ^ String.concatWithMap " and " printWherespec wherespecs
-      | A.BaseSig specs => "sig " ^ String.concatWithMap " " printSpec specs ^ " end"
+        A.VarSig sym => [Symbol.name sym]
+      | A.AugSig (sigexp,wherespecs) => (
+          printSigexp sigexp
+          @ (
+            wherespecs
+            |> concatMapAnd "where " (fn (kw,wherespec) => [kw ^ printWherespec wherespec])
+          )
+        )
+      | A.BaseSig specs => (
+          case List.concatMap printSpec specs of
+            nil   => ["sig end"]
+          | lines => "sig" :: indent lines @ ["end"]
+        )
       | A.MarkSig (sigexp,_) => printSigexp sigexp
       and printFsigexp = fn _ => raise TODO
       and printSpec = fn
-        A.StrSpec structures => "structure " ^ String.concatWithMap " and " (fn (name,sigexp,pathOpt) => Symbol.name name ^ " : " ^ printSigexp sigexp ^ (case pathOpt of NONE => "" | SOME path => " = " ^ printPath path)) structures
-      | A.TycSpec (types,eq) => (if eq then "eqtype" else "type") ^ " " ^ String.concatWithMap " and " (fn (name,tyvars,tyOpt) => printTys (List.map A.VarTy tyvars) ^ Symbol.name name ^ (case tyOpt of NONE => "" | SOME ty => " = " ^ printTy ty)) types
+        A.StrSpec structures => (
+          structures
+          |> concatMapAnd "structure " (
+              fn (kw,(name,sigexp,pathOpt)) =>
+                case printSigexp sigexp of
+                  [line] => [kw ^ Symbol.name name ^ " : " ^ line]
+                | lines  => kw ^ Symbol.name name ^ " :" :: indent lines
+            )
+        )
+      | A.TycSpec (types,eq) => (
+          types
+          |> concatMapAnd (if eq then "eqtype " else "type ") (
+              fn (kw,(name,tyvars,tyOpt)) => [kw ^ printTys (List.map A.VarTy tyvars) ^ Symbol.name name
+                ^ (case tyOpt of NONE => "" | SOME ty => " = " ^ printTy ty)]
+            )
+        )
       | A.FctSpec _ => raise Invalid "<fctsig> ignored"
-      | A.ValSpec vals => "val " ^ String.concatWithMap " and " (fn (name,ty) => Symbol.name name ^ " : " ^ printTy ty) vals
+      | A.ValSpec vals => (
+          vals
+          |> concatMapAnd "val " (fn (kw,(name,ty)) => [kw ^ Symbol.name name ^ " : " ^ printTy ty])
+        )
       | A.DataSpec {datatycs=datatycs, withtycs=withtycs} => (
           case withtycs of
-            nil => "datatype " ^ String.concatWithMap " and " printDb datatycs
+            nil => concatMapAnd "datatype " (fn (kw,db) => case printDb db of [line] => [kw ^ line] | lines => kw :: indent lines) datatycs
           | _ => raise Invalid "nonempty withtycs"
         )
-      | A.DataReplSpec (name,path) => "datatype " ^ Symbol.name name ^ " = datatype " ^ printPath path
-      | A.ExceSpec exns => "exception " ^ String.concatWithMap " and " (fn (name,NONE) => Symbol.name name | (name,SOME ty) => Symbol.name name ^ " of " ^ printTy ty) exns
-      | A.ShareStrSpec paths => "sharing " ^ String.concatWithMap " = " printPath paths
-      | A.ShareTycSpec paths => "sharing type " ^ String.concatWithMap " = " printPath paths
-      | A.IncludeSpec sigexp => "include " ^ printSigexp sigexp
+      | A.DataReplSpec (name,path) => ["datatype " ^ Symbol.name name ^ " = datatype " ^ printPath path]
+      | A.ExceSpec exns => (
+        exns
+        |> concatMapAnd "exception " (
+            fn (kw,(name,tyOpt)) => [
+              kw ^ Symbol.name name ^ (
+                case tyOpt of
+                  NONE    => ""
+                | SOME ty => " of " ^ printTy ty
+              )
+            ]
+          )
+      )
+      | A.ShareStrSpec paths => ["sharing " ^ String.concatWithMap " = " printPath paths]
+      | A.ShareTycSpec paths => ["sharing type " ^ String.concatWithMap " = " printPath paths]
+      | A.IncludeSpec sigexp => (
+          case printSigexp sigexp of
+            nil => nil
+          | line :: lines => "include " ^ line :: lines
+        )
       | A.MarkSpec (spec,_) => printSpec spec
       and printSigConst = fn
-        A.NoSig          => ""
-      | A.Transparent sg => ": " ^ printSigexp sg ^ " "
-      | A.Opaque      sg => ":> " ^ printSigexp sg ^ " "
+        A.NoSig          => nil
+      | A.Transparent sg => (
+          case printSigexp sg of
+            [line] => [" : " ^ line]
+          | lines  => ":" :: lines
+        )
+      | A.Opaque      sg => (
+          case printSigexp sg of
+            [line] => [" :> " ^ line]
+          | lines  => ":>" :: lines
+        )
       and printDec = fn
-        A.ValDec (vbs,tyvars) => "val " ^ printTys (List.map A.VarTy tyvars) ^ String.concatWithMap " and " printVb vbs
-      | A.StrDec strbs => "structure " ^ String.concatWithMap " and " printStrb strbs
-      | A.SigDec sigbs => "signature " ^ String.concatWithMap " and " printSigb sigbs
-      | A.SeqDec decs => decs |> List.map (fn dec => printDec dec ^ " ") |> String.concat
+        A.ValDec (vbs,tyvars) => (
+          vbs
+          |> List.map printVb
+          |> concatMapAnd ("val " ^ printTys (List.map A.VarTy tyvars)) (
+              fn (kw,{pat=pat,exp=[line]}) => [kw ^ pat ^ " = " ^ line]
+               | (kw,{pat=pat,exp=lines}) => kw ^ pat ^ " =" :: indent lines
+            )
+        )
+      | A.StrDec strbs => (
+          strbs
+          |> List.map printStrb
+          |> concatMapAnd "structure " (fn (kw,{name=name,def=def,constraint=constraint}) =>
+            let
+              val decl =
+                putOnLast " =" (
+                  case constraint of
+                    nil => [kw ^ name]
+                  | [l] => [kw ^ name ^ l]
+                  | l::ls  => kw ^ name ^ l :: indent ls
+                )
+            in
+              case def of
+                nil => decl
+              | [l] => putOnLast (" " ^ l) decl
+              | _   => decl @ indent def
+            end
+          )
+        )
+      | A.SigDec sigbs => (
+          sigbs
+          |> List.map printSigb
+          |> concatMapAnd "signature " (
+              fn (kw,{name=name,def=[line]}) => [kw ^ name ^ " = " ^ line]
+               | (kw,{name=name,def=def   }) => kw ^ name ^ " =" :: indent def
+            )
+        )
+      | A.SeqDec decs => (
+          case List.concatMap (Fn.curry (op ::) "" o printDec) decs of
+            nil     => nil
+          | "" :: l => l
+          | l       => l
+        )
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
-        A.Vb {pat=pat,exp=exp,lazyp=_} => #string (printPat pat) ^ " = " ^ #string (printExp exp)
+        A.Vb {pat=pat,exp=exp,lazyp=_} => { pat = #string (printPat pat), exp = #string (printExp exp) }
       | A.MarkVb (vb,_) => printVb vb
       and printRvb = fn _ => raise TODO
       and printFb = fn _ => raise TODO
       and printClause = fn _ => raise TODO
       and printTb = fn _ => raise TODO
       and printDb = fn
-        A.Db {tyc=tyc, tyvars=tyvars, rhs=rhs, lazyp=_} => (
+        A.Db {tyc=tyc, tyvars=tyvars, rhs=rhs, lazyp=_} => [
           printTys (List.map A.VarTy tyvars) ^ Symbol.name tyc ^ " = " ^
             String.concatWithMap " | " (fn (name,NONE) => Symbol.name name | (name,SOME ty) => Symbol.name name ^ " of " ^ printTy ty) rhs
-        )
+        ]
       | A.MarkDb (db,_) => printDb db
       and printEb = fn _ => raise TODO
       and printStrb = fn
-        A.Strb {name=name,def=def,constraint=constraint} => Symbol.name name ^ printSigConst constraint ^ " = " ^ printStrexp def
+        A.Strb {name=name,def=def,constraint=constraint} => {name=Symbol.name name, def=printStrexp def, constraint=printSigConst constraint}
       | A.MarkStrb (strb,_) => printStrb strb
       and printFctb = fn _ => raise TODO
       and printSigb = fn
-        A.Sigb {name=name,def=def} => Symbol.name name ^ " = " ^ printSigexp def
+        A.Sigb {name=name,def=def} => {name=Symbol.name name,def=printSigexp def}
       | A.MarkSigb (sigb,_) => printSigb sigb
       and printFsigb = fn _ => raise TODO
       and printTyvar = fn
@@ -188,6 +367,6 @@ structure AutoFormat :> AUTOFORMAT =
       | [tyvar] => printTy tyvar ^ " "
       | tyvars  => "(" ^ String.concatWithMap "," printTy tyvars ^ ") "
     in
-      val toString = printDec
+      val toString = String.concat o List.map (fn s => s ^ "\n") o printDec
     end
   end
