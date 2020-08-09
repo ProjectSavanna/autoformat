@@ -212,7 +212,11 @@ structure AutoFormat :> AUTOFORMAT =
       and printPat' = fn pat => wrapStr (printPat pat)
       and printStrexp = fn
         A.VarStr path => [printPath path]
-      | A.BaseStr dec => "struct" :: indent (printDec dec) @ ["end"]
+      | A.BaseStr dec => (
+          case indent (printDec dec) of
+            nil   => ["struct end"]
+          | lines => "struct" :: lines  @ ["end"]
+        )
       | A.ConstrainedStr (strexp,sigconst) => (
           case printSigConst sigconst of
             [line] => putOnLast line (printStrexp strexp)
