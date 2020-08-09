@@ -337,6 +337,14 @@ structure AutoFormat :> AUTOFORMAT =
                | (kw,{pat=pat,exp=lines}) => kw ^ pat ^ " =" :: indent lines
             )
         )
+      | A.ValrecDec (rbvs,tyvars) => (
+          rbvs
+          |> List.map printRvb
+          |> concatMapAnd ("val rec " ^ printTys (List.map A.VarTy tyvars)) (
+              fn (kw,{init=init,exp=[line]}) => [kw ^ init ^ " = " ^ line]
+               | (kw,{init=init,exp=lines}) => kw ^ init ^ " =" :: indent lines
+            )
+        )
       | A.StrDec strbs => (
           strbs
           |> List.map printStrb
@@ -371,7 +379,22 @@ structure AutoFormat :> AUTOFORMAT =
       and printVb = fn
         A.Vb {pat=pat,exp=exp,lazyp=_} => { pat = #string (printPat pat), exp = #string (printExp exp) }
       | A.MarkVb (vb,_) => printVb vb
-      and printRvb = fn _ => raise TODO
+      and printRvb = fn
+        A.Rvb {var=var,fixity=fixity,exp=exp,resultty=resulttyOpt,lazyp=_} => {
+          init =
+            (
+              if Option.isNone fixity
+                then "op "
+                else ""
+            ) ^
+            Symbol.name var ^ (
+              case resulttyOpt of
+                NONE => ""
+              | SOME ty => " : " ^ printTy ty
+            ),
+          exp = #string (printExp exp)
+        }
+      | A.MarkRvb (rvb,_) => printRvb rvb
       and printFb = fn _ => raise TODO
       and printClause = fn _ => raise TODO
       and printTb = fn _ => raise TODO
