@@ -18,6 +18,10 @@ structure AutoFormat :> AUTOFORMAT =
       val listToString = fn toString => ListFormat.fmt { init = "[", sep = ", ", final = "]", fmt = toString}
       val tupleToString = fn toString => ListFormat.fmt { init = "(", sep = ", ", final = ")", fmt = toString}
 
+      val wrap = fn
+        {string = string, safe = false} => "(" ^ string ^ ")"
+      | {string = string, safe = true } => string
+
       val rec printExp = fn
         A.VarExp path => {string = printPath path, safe = true}
       | A.FnExp rules => {string = "fn " ^ printRules rules, safe = false}
@@ -54,19 +58,16 @@ structure AutoFormat :> AUTOFORMAT =
       | A.VectorExp exps => {string = "#" ^ listToString (#string o printExp) exps, safe = true}
       | A.WhileExp {test=test,expr=expr} => {string = "while " ^ #string (printExp test) ^ " do " ^ #string (printExp expr), safe = false}
       | A.MarkExp (exp,_) => printExp exp
-      and printExp' = fn exp => wrapExp (printExp exp)
-      and wrapExp = fn
-        {string = string, safe = false} => "(" ^ string ^ ")"
-      | {string = string, safe = true } => string
+      and printExp' = fn exp => wrap (printExp exp)
       and printRules = fn rules => (
           let
-            val wrap =
+            val wrap' =
               case rules of
                 nil => raise Invalid "empty rules"
               | [r] => #string
-              | _   => wrapExp
+              | _   => wrap
 
-            val printed = List.map (fn A.Rule {pat=pat,exp=exp} => {pat=printPat pat, exp=wrap (printExp exp)}) rules
+            val printed = List.map (fn A.Rule {pat=pat,exp=exp} => {pat = #string (printPat pat), exp=wrap' (printExp exp)}) rules
             val pad =
               printed
               |> List.map (String.size o #pat)
@@ -81,17 +82,33 @@ structure AutoFormat :> AUTOFORMAT =
           end
         )
       and printPat = fn
-        A.WildPat => "_"
-      | A.VarPat path => printPath path
-      | A.IntPat (s,_) => s
-      | A.WordPat (s,_) => s
-      | A.StringPat s => "\"" ^ String.toString s ^ "\""
-      | A.CharPat s => "#\"" ^ String.toString s ^ "\""
-      | A.ListPat pats => listToString printPat pats
-      | A.TuplePat pats => tupleToString printPat pats
-      | A.FlatAppPat pats => (case pats of [pat] => printPat (#item pat) | _ => raise Invalid "unexpected FlatAppPat")
-      | A.ConstraintPat {pattern=pat,constraint=ty} => printPat pat ^ " : " ^ printTy ty
+        A.WildPat => {string = "_", safe = true}
+      | A.VarPat path => {string = printPath path, safe = true}
+      | A.IntPat (s,_) => {string = s, safe = true}
+      | A.WordPat (s,_) => {string = s, safe = true}
+      | A.StringPat s => {string = "\"" ^ String.toString s ^ "\"", safe = true}
+      | A.CharPat s => {string = "#\"" ^ String.toString s ^ "\"", safe = true}
+      | A.RecordPat {def=defs,flexibility=flexibility} => {string = ListFormat.fmt { init = "{", sep = ", ", final = if flexibility then ", ...}" else "}", fmt = fn (sym,pat) => Symbol.name sym ^ " = " ^ #string (printPat pat)} defs, safe = true}
+      | A.ListPat pats => {string = listToString (#string o printPat) pats, safe = true}
+      | A.TuplePat pats => {string = tupleToString (#string o printPat) pats, safe = true}
+      | A.FlatAppPat pats => (
+          case pats of
+            nil   => raise Invalid "empty FlatAppPat"
+          | [pat] => printPat (#item pat)
+          | _     => {string = String.concatWith " " (List.map (printPat' o #item) pats), safe = false}
+        )
+      | A.AppPat {constr=constr,argument=argument} => {string = printPat' constr ^ " " ^ printPat' argument, safe = false}
+      | A.ConstraintPat {pattern=pat,constraint=ty} => {string = printPat' pat ^ " : " ^ printTy ty, safe = true}
+      | A.LayeredPat {varPat=varPat,expPat=expPat} => {string = printPat' varPat ^ " as " ^ printPat' expPat, safe = false}
+      | A.VectorPat pats => {string = "#" ^ listToString (#string o printPat) pats, safe = true}
       | A.MarkPat (pat,_) => printPat pat
+      | A.OrPat pats => (
+          case pats of
+            nil => raise Invalid "empty OrPat"
+          | [pat] => printPat pat
+          | _ => {string = ListFormat.fmt { init = "(", sep = " | ", final = ")", fmt = #string o printPat} pats, safe = true}
+        )
+      and printPat' = fn pat => wrap (printPat pat)
       and printStrexp = fn _ => raise TODO
       and printFctexp = fn _ => raise TODO
       and printWherespec = fn _ => raise TODO
@@ -106,7 +123,7 @@ structure AutoFormat :> AUTOFORMAT =
       | A.SeqDec decs => decs |> List.map (fn dec => printDec dec ^ "\n") |> String.concat
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
-        A.Vb {pat=pat,exp=exp,lazyp=false} => printPat pat ^ " = " ^ #string (printExp exp)
+        A.Vb {pat=pat,exp=exp,lazyp=false} => #string (printPat pat) ^ " = " ^ #string (printExp exp)
       | A.MarkVb (vb,_) => printVb vb
       and printRvb = fn _ => raise TODO
       and printFb = fn _ => raise TODO
