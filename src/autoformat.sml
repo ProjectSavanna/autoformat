@@ -118,8 +118,14 @@ structure AutoFormat :> AUTOFORMAT =
       | A.LetStr (dec,strexp) => "let " ^ printDec dec ^ " in " ^ printStrexp strexp ^ " end"
       | A.MarkStr (strexp,_) => printStrexp strexp
       and printFctexp = fn _ => raise TODO
-      and printWherespec = fn _ => raise TODO
-      and printSigexp = fn _ => raise TODO
+      and printWherespec = fn
+        A.WhType (path,tyvars,ty) => "type " ^ printTys (List.map A.VarTy tyvars) ^ printPath path ^ " = " ^ printTy ty
+      | A.WhStruct (src,dst) => printPath src ^ " = " ^ printPath dst
+      and printSigexp = fn
+        A.VarSig sym => Symbol.name sym
+      | A.AugSig (sigexp,wherespecs) => printSigexp sigexp ^ " where " ^ String.concatWithMap " and " printWherespec wherespecs
+      | A.BaseSig specs => "sig " ^ String.concatWithMap " " printSpec specs ^ " end"
+      | A.MarkSig (sigexp,_) => printSigexp sigexp
       and printFsigexp = fn _ => raise TODO
       and printSpec = fn _ => raise TODO
       and printSigConst = fn
@@ -127,11 +133,9 @@ structure AutoFormat :> AUTOFORMAT =
       | A.Transparent sg => ": " ^ printSigexp sg ^ " "
       | A.Opaque      sg => ":> " ^ printSigexp sg ^ " "
       and printDec = fn
-        A.ValDec (vbs,tyvars) => (
-          "val " ^ (case printTys (List.map A.VarTy tyvars) of NONE => "" | SOME s => s ^ " ") ^
-            String.concatWithMap "\nand " printVb vbs
-        )
+        A.ValDec (vbs,tyvars) => "val " ^ printTys (List.map A.VarTy tyvars) ^ String.concatWithMap "\nand " printVb vbs
       | A.StrDec strbs => "structure " ^ String.concatWithMap "\nand " printStrb strbs
+      | A.SigDec sigbs => "signature " ^ String.concatWithMap "\nand " printSigb sigbs
       | A.SeqDec decs => decs |> List.map (fn dec => printDec dec ^ "\n") |> String.concat
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
@@ -147,20 +151,22 @@ structure AutoFormat :> AUTOFORMAT =
         A.Strb {name=name,def=def,constraint=constraint} => Symbol.name name ^ printSigConst constraint ^ " = " ^ printStrexp def
       | A.MarkStrb (strb,_) => printStrb strb
       and printFctb = fn _ => raise TODO
-      and printSigb = fn _ => raise TODO
+      and printSigb = fn
+        A.Sigb {name=name,def=def} => Symbol.name name ^ " = " ^ printSigexp def
+      | A.MarkSigb (sigb,_) => printSigb sigb
       and printFsigb = fn _ => raise TODO
       and printTyvar = fn
         A.Tyv a => Symbol.name a
       | A.MarkTyv (tyvar,_) => printTyvar tyvar
       and printTy = fn
         A.VarTy tyvar => printTyvar tyvar
-      | A.ConTy (path,tyvars) => (case printTys tyvars of NONE => "" | SOME s => s ^ " ") ^ printPath path
+      | A.ConTy (path,tyvars) => printTys tyvars ^ printPath path
       | A.TupleTy tys => String.concatWithMap " * " printTy tys
       | A.MarkTy (ty,_) => printTy ty
       and printTys = fn
-        nil     => NONE
-      | [tyvar] => SOME (printTy tyvar)
-      | tyvars  => SOME ("(" ^ String.concatWithMap "," printTy tyvars ^ ")")
+        nil     => ""
+      | [tyvar] => printTy tyvar ^ " "
+      | tyvars  => "(" ^ String.concatWithMap "," printTy tyvars ^ ") "
     in
       val toString = printDec
     end
