@@ -253,7 +253,46 @@ structure AutoFormat :> AUTOFORMAT =
         )
       | A.LetStr (dec,strexp) => "let" :: indent (printDec dec) @ ["in"] @ indent (printStrexp strexp) @ ["end"]
       | A.MarkStr (strexp,_) => printStrexp strexp
-      and printFctexp = fn _ => raise TODO
+      and printFctexp = fn
+        A.BaseFct {params=params,body=body,constraint=constraint} => (
+          case params of
+            [(nameOpt,sg)] => (
+                let
+                  val initial = (
+                    case nameOpt of
+                      NONE      =>
+                        let
+                          val rec getSpecs = fn
+                            A.BaseSig specs => specs
+                          | A.MarkSig (sigexp,_) => getSpecs sigexp
+                          | _ => raise Fail "expected spec in functor definition"
+                        in
+                          case separateWithNewlines printSpec (getSpecs sg) of
+                            [line] => [" (" ^ line ^ ")"]
+                          | lines  => " (" :: indent lines @ [")"]
+                        end
+                    | SOME name => (
+                        case printSigexp sg of
+                          [line] => [" (" ^ Symbol.name name ^ " : " ^ line ^ ")"]
+                        | lines  => " (" ^ Symbol.name name ^ " :" :: indent (printSigexp sg) @ [")"]
+                      )
+                  )
+                  val withConstraint =
+                    putOnLast " =" (
+                      case printSigConst constraint of
+                        nil     => initial
+                      | l :: ls => putOnLast l initial @ indent ls
+                    )
+                in
+                  case printStrexp body of
+                    [line] => putOnLast (" " ^ line) withConstraint
+                  | lines  => withConstraint @ indent lines
+                end
+            )
+          | _ => raise Invalid "higher-order functors not supported"
+        )
+      | A.MarkFct (fctexp,_) => printFctexp fctexp
+      | _ => raise Invalid "extra functor syntaxes not supported"
       and printWherespec = fn
         A.WhType (path,tyvars,ty) => "type " ^ printTys printTyvar tyvars ^ printPath path ^ " = " ^ printTy ty
       | A.WhStruct (src,dst) => printPath src ^ " = " ^ printPath dst
@@ -272,7 +311,6 @@ structure AutoFormat :> AUTOFORMAT =
           | lines => "sig" :: indent lines @ ["end"]
         )
       | A.MarkSig (sigexp,_) => printSigexp sigexp
-      and printFsigexp = fn _ => raise TODO
       and printSpec = fn
         A.StrSpec structures => (
           structures
@@ -397,6 +435,11 @@ structure AutoFormat :> AUTOFORMAT =
             end
           )
         )
+      | A.FctDec fctbs => (
+          fctbs
+          |> List.map printFctb
+          |> concatMapAnd "functor " (fn (kw,{name=name,def=def}) => putOnFirst (kw ^ name) def)
+        )
       | A.SigDec sigbs => (
           sigbs
           |> List.map printSigb
@@ -463,7 +506,9 @@ structure AutoFormat :> AUTOFORMAT =
       and printStrb = fn
         A.Strb {name=name,def=def,constraint=constraint} => {name=Symbol.name name, def=printStrexp def, constraint=printSigConst constraint}
       | A.MarkStrb (strb,_) => printStrb strb
-      and printFctb = fn _ => raise TODO
+      and printFctb = fn
+        A.Fctb {name=name,def=def} => {name=Symbol.name name,def=printFctexp def}
+      | A.MarkFctb (fctb,_) => printFctb fctb
       and printSigb = fn
         A.Sigb {name=name,def=def} => {name=Symbol.name name,def=printSigexp def}
       | A.MarkSigb (sigb,_) => printSigb sigb
