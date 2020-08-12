@@ -394,9 +394,11 @@ structure AutoFormat :> AUTOFORMAT =
                | (kw,{name=name,def=def   }) => kw ^ name ^ " =" :: indent def
             )
         )
+      | A.FsigDec _ => raise Invalid "funsig not supported"
       | A.LocalDec (dec1,dec2) => "local" :: indent (printDec dec1) @ ["in"] @ indent (printDec dec2) @ ["end"]
       | A.SeqDec decs => separateWithNewlines printDec decs
       | A.OpenDec paths => ["open " ^ String.concatWithMap " " printPath paths]
+      | A.OvldDec _ => raise Invalid "not available in external language"
       | A.FixDec {fixity=fixity, ops=ops} => [Fixity.fixityToString fixity ^ String.concatWithMap " " Symbol.name ops]
       | A.MarkDec (dec,_) => printDec dec
       and printVb = fn
@@ -454,7 +456,6 @@ structure AutoFormat :> AUTOFORMAT =
       and printSigb = fn
         A.Sigb {name=name,def=def} => {name=Symbol.name name,def=printSigexp def}
       | A.MarkSigb (sigb,_) => printSigb sigb
-      and printFsigb = fn _ => raise TODO
       and printTyvar = fn
         A.Tyv a => Symbol.name a
       | A.MarkTyv (tyvar,_) => printTyvar tyvar
