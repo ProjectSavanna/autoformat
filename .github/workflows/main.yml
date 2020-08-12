@@ -49,7 +49,3 @@ jobs:
         with:
           file_pattern: test/*.output.sml
           commit_message: Update test case outputs
-        if: ${{ github.event_name == 'pull_request' }}
-
-      - name: Check test case outputs
-        run: git diff-index --quiet HEAD
