@@ -1,0 +1,14 @@
+Library
+  signature AUTOFORMAT
+  structure AutoFormat
+is
+  $SMACKAGE/typeclasses/v1/sources.cm
+
+  $/basis.cm
+  $SMLNJ-LIB/Util/smlnj-lib.cm
+  $smlnj/compiler/current.cm
+  $smlnj/viscomp/basics.cm
+  $smlnj/viscomp/parser.cm
+
+  autoformat.sig
+  autoformat.sml
