@@ -371,6 +371,7 @@ structure AutoFormat :> AUTOFORMAT =
             ) datatycs
           ) @ concatMapAnd "withtype " (fn (kw,db) => [kw ^ printTb db]) withtycs
         )
+      | A.DataReplDec (name,path) => ["datatype " ^ Symbol.name name ^ " = datatype " ^ printPath path]
       | A.ExceptionDec ebs => (
           ebs
           |> List.map printEb
