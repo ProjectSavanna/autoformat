@@ -9,7 +9,6 @@ structure AutoFormat :> AUTOFORMAT =
       fun x |> f = f x
 
       exception Invalid of string
-      exception TODO
 
       val printTys = fn f => fn
         nil     => ""
