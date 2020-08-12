@@ -21,8 +21,15 @@ jobs:
         with:
           smlnj-version: ${{ matrix.smlnj-version }}
 
+      - uses: ProjectSavanna/setup-smackage@v1.0.0
+        with:
+          sml-compiler: smlnj
+
       - name: Build runner
         run: |
+          smackage source typeclasses git git://github.com/ProjectSavanna/typeclasses.git
+          smackage refresh
+          smackage get typeclasses v1
           mkdir bin
           ml-build run.cm Run.run bin/run
 
