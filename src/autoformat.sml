@@ -528,6 +528,19 @@ structure AutoFormat :> AUTOFORMAT =
       and printTy = fn
         A.VarTy tyvar => printTyvar tyvar
       | A.ConTy (path,tyvars) => printTys printTy tyvars ^ printPath path
+      | A.RecordTy fields => (
+          case fields of
+            nil => "unit"
+          | _ =>
+              ListFormat.fmt
+                {
+                  init = "{ ",
+                  sep = ", ",
+                  final = " }",
+                  fmt = fn (name,ty) => Symbol.name name ^ " : " ^ printTy ty
+                }
+                fields
+        )
       | A.TupleTy tys => String.concatWithMap " * " printTy tys
       | A.MarkTy (ty,_) => printTy ty
     in
