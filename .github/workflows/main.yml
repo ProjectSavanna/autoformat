@@ -30,8 +30,9 @@ jobs:
           smackage source typeclasses git git://github.com/ProjectSavanna/typeclasses.git
           smackage refresh
           smackage get typeclasses v1
+          echo "SMACKAGE $HOME/.smackage/lib" > pathconfig
           mkdir bin
-          ml-build run.cm Run.run bin/run
+          CM_LOCAL_PATHCONFIG=pathconfig ml-build run.cm Run.run bin/run
 
       - name: Run formatter
         run: |
