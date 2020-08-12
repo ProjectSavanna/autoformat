@@ -1,0 +1,34 @@
+name: build-test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    name: SML/NJ ${{ matrix.smlnj-version }} - ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        smlnj-version: [110.97, 110.98]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build runner
+        run: |
+          mkdir bin
+          ml-build run.cm Run.run bin/run
+      - name: Run formatter
+        run: |
+          for file in test/*.input.sml; do
+            sml @SMLload=bin/run "$file" "test/$(basename "$file" .input.sml).output.sml"
+          done
+      - name: Update test case outputs
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          file_pattern: test/*.output.sml
+          commit_message: Update test case outputs
+        if: ${{ github.event_name == 'pull_request' }}
+      - name: Check test case outputs
+        run: git diff-index --quiet HEAD
