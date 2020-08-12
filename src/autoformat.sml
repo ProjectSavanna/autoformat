@@ -361,6 +361,16 @@ structure AutoFormat :> AUTOFORMAT =
           |> List.map printTb
           |> concatMapAnd "type " (fn (kw,str) => [kw ^ str])
         )
+      | A.DatatypeDec {datatycs=datatycs,withtycs=withtycs} => (
+          (
+            concatMapAnd "datatype " (
+              fn (kw,db) =>
+                case printDb db of
+                  [line] => [kw ^ line]
+                | lines => kw :: indent lines
+            ) datatycs
+          ) @ concatMapAnd "withtype " (fn (kw,db) => [kw ^ printTb db]) withtycs
+        )
       | A.ExceptionDec ebs => (
           ebs
           |> List.map printEb
