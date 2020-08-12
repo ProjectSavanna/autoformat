@@ -409,6 +409,17 @@ structure AutoFormat :> AUTOFORMAT =
           ) @ concatMapAnd "withtype " (fn (kw,db) => [kw ^ printTb db]) withtycs
         )
       | A.DataReplDec (name,path) => ["datatype " ^ Symbol.name name ^ " = datatype " ^ printPath path]
+      | A.AbstypeDec {abstycs=abstycs,withtycs=withtycs,body=body} => (
+          (
+            concatMapAnd "abstype " (
+              fn (kw,db) =>
+                case printDb db of
+                  [line] => [kw ^ line]
+                | lines => kw :: indent lines
+            ) abstycs
+          ) @ concatMapAnd "withtype " (fn (kw,db) => [kw ^ printTb db]) withtycs
+          @ "with" :: indent (printDec body) @ ["end"]
+        )
       | A.ExceptionDec ebs => (
           ebs
           |> List.map printEb
