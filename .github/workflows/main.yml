@@ -39,7 +39,9 @@ jobs:
       - name: Run formatter
         run: |
           for file in test/*.input.sml; do
-            sml @SMLload=bin/run "$file" "test/$(basename "$file" .input.sml).output.sml"
+            sml @SMLload=bin/run "$file" "test/$(basename "$file" .input.sml).output.sml" || (
+              echo "::error::Error when formatting test case file: $file" && exit 1
+            )
           done
 
       - name: Update test case outputs
