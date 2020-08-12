@@ -19,7 +19,7 @@ jobs:
 
       - uses: ProjectSavanna/setup-sml@v1.0.2
         with:
-          smlnj-version: ${{ matrix.smlnj }}
+          smlnj-version: ${{ matrix.smlnj-version }}
 
       - name: Build runner
         run: |
