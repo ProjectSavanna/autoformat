@@ -9,7 +9,6 @@ jobs:
 
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         smlnj-version: [110.97, 110.98]
 
@@ -49,4 +48,4 @@ jobs:
         with:
           file_pattern: test/*.output.sml
           commit_message: Update test case outputs
-        if: ${{ github.event_name == 'push' }}
+        if: ${{ github.event_name == 'push' && matrix.smlnj-version == '110.98' }}
