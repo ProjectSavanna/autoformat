@@ -4,13 +4,13 @@ on: [push, pull_request]
 
 jobs:
   test:
-    name: SML/NJ ${{ matrix.smlnj-version }} - ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    name: SML/NJ ${{ matrix.smlnj-version }}
+    runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
-        os: [ubuntu-latest, macos-latest]
         smlnj-version: [110.97, 110.98]
 
     steps:
