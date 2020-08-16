@@ -1,0 +1,52 @@
+name: build-test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    name: SML/NJ ${{ matrix.smlnj-version }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        smlnj-version: [110.97, 110.98]
+
+    steps:
+
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ github.head_ref }}
+
+      - uses: ProjectSavanna/setup-sml@v1.0.2
+        with:
+          smlnj-version: ${{ matrix.smlnj-version }}
+
+      - uses: ProjectSavanna/setup-smackage@v1.0.0
+        with:
+          sml-compiler: smlnj
+
+      - name: Build runner
+        run: |
+          smackage source typeclasses git git://github.com/ProjectSavanna/typeclasses.git
+          smackage refresh
+          smackage get typeclasses v1
+          echo "SMACKAGE $HOME/.smackage/lib" > pathconfig
+          mkdir bin
+          CM_LOCAL_PATHCONFIG=pathconfig ml-build run.cm Run.run bin/run
+          rm pathconfig
+
+      - name: Run formatter
+        run: |
+          for file in test/*.input.sml; do
+            sml @SMLload=bin/run "$file" "test/$(basename "$file" .input.sml).output.sml" || (
+              echo "::error::Error when formatting test case file: $file" && exit 1
+            )
+          done
+
+      - name: Update test case outputs
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          file_pattern: test/*.output.sml
+          commit_message: Update test case outputs
+        if: ${{ github.event_name == 'push' && matrix.smlnj-version == '110.98' }}
