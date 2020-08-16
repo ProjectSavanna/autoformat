@@ -34,6 +34,7 @@ jobs:
           echo "SMACKAGE $HOME/.smackage/lib" > pathconfig
           mkdir bin
           CM_LOCAL_PATHCONFIG=pathconfig ml-build run.cm Run.run bin/run
+          rm pathconfig
 
       - name: Run formatter
         run: |
