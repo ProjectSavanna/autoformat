@@ -18,11 +18,11 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
 
-      - uses: ProjectSavanna/setup-sml@v1.0.2
+      - uses: ProjectSavanna/setup-sml@v1.1.2
         with:
           smlnj-version: ${{ matrix.smlnj-version }}
 
-      - uses: ProjectSavanna/setup-smackage@v1.0.0
+      - uses: ProjectSavanna/setup-smackage@v1.0.1
         with:
           sml-compiler: smlnj
 
