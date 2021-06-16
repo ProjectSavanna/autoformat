@@ -22,7 +22,7 @@ jobs:
         with:
           smlnj-version: ${{ matrix.smlnj-version }}
 
-      - uses: ProjectSavanna/setup-smackage@v1.0.0
+      - uses: ProjectSavanna/setup-smackage@v1.0.1
         with:
           sml-compiler: smlnj
 
