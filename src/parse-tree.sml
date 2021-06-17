@@ -110,26 +110,62 @@ structure Op =
         else f data
   end
 
-type 'a seq = 'a list
-type 'a seq1 = 'a * 'a seq
-val map1 = fn f => fn (x1, xs) => (f x1, List.map f xs)
-type 'a seq2 = 'a * 'a * 'a seq
-val map2 = fn f => fn (x1, x2, xs) => (f x1, f x2, List.map f xs)
+structure List =
+  struct
+    open List
+
+    type 'a t = 'a list
+
+    local
+      fun aux f nil        = "]"
+        | aux f (x :: nil) = f x ^ "]"
+        | aux f (x :: xs)  = f x ^ ", " ^ aux f xs
+    in
+      val toString = fn f => fn l => "[" ^ aux f l
+    end
+  end
+
+structure Seq =
+  struct
+    type 'a t = 'a list
+    val map = List.map
+  end
+
+structure Seq1 =
+  struct
+    type 'a t = 'a * 'a list
+    val map = fn f => fn (x1, xs) => (f x1, List.map f xs)
+  end
+
+structure Tuple =
+  struct
+    type 'a t = 'a * 'a * 'a list
+    val map = fn f => fn (x1, x2, xs) => (f x1, f x2, List.map f xs)
+
+    val toString : ('a -> string) -> 'a t -> string =
+      fn f => fn (x1, x2, xs) => "(" ^ f x1 ^ String.concat (List.map (fn x => ", " ^ f x) (x2 :: xs)) ^ ")"
+  end
+
+structure Seq2 =
+  struct
+    type 'a t = 'a * 'a * 'a list
+    val map = fn f => fn (x1, x2, xs) => (f x1, f x2, List.map f xs)
+  end
 
 structure Ty =
   struct
     datatype 'ty t
       = Var of TyVar.t
-      | Cons of 'ty seq * LongTyCon.t
+      | Cons of 'ty Seq.t * LongTyCon.t
       | Record of (Lab.t * 'ty) list
-      | Tuple of 'ty seq2
+      | Tuple of 'ty Tuple.t
       | Arrow of { dom : 'ty, cod : 'ty }
 
     fun map f =
       fn Var tyvar                      => Var tyvar
-       | Cons (tyseq, longtycon)        => Cons (List.map f tyseq, longtycon)
+       | Cons (tyseq, longtycon)        => Cons (Seq.map f tyseq, longtycon)
        | Record tyrows                  => Record (List.map (fn (lab, ty) => (lab, f ty)) tyrows)
-       | Tuple tys                      => Tuple (map2 f tys)
+       | Tuple tys                      => Tuple (Tuple.map f tys)
        | Arrow { dom = dom, cod = cod } => Arrow { dom = f dom, cod = f cod }
   end
 
@@ -143,7 +179,7 @@ structure Pat =
       | Var of LongVId.t Op.t
       (* | Record *)
       | Unit
-      | Tuple of 'pat seq2
+      | Tuple of 'pat Tuple.t
       | List of 'pat list
       | Constructor of LongVId.t Op.t * 'pat
 
@@ -152,7 +188,7 @@ structure Pat =
        | SCon scon             => SCon scon
        | Var id                => Var id
        | Unit                  => Unit
-       | Tuple pats            => Tuple (map2 f pats)
+       | Tuple pats            => Tuple (Tuple.map f pats)
        | List pats             => List (List.map f pats)
        | Constructor (id, pat) => Constructor (id, f pat)
   end
@@ -167,7 +203,7 @@ structure Prototype =
           open Pat
 
           type t = { atomic : bool, string : string }
-          val aux = fn b => fn s => { atomic = b, string = s }
+          val aux = fn b => fn s => { atomic = b, string = s } : t
           val atomic = aux true
           val general = aux false
           val wrap = fn { atomic, string } : t => if atomic then string else "(" ^ string ^ ")"
@@ -175,6 +211,9 @@ structure Prototype =
           fn Wildcard              => atomic "_"
            | SCon scon             => atomic (SCon.toString scon)
            | Var id                => atomic (Op.toString LongVId.toString id)
+           | Unit                  => atomic "()"  (* TODO: factor out *)
+           | Tuple pats            => atomic (Tuple.toString #string pats)
+           | List pats             => atomic (List.toString #string pats)
            | Constructor (id, pat) => general (Op.toString LongVId.toString id ^ " " ^ wrap pat)
         end
     )
@@ -190,18 +229,33 @@ structure Prototype =
     val ex =
       let
         open Pat
+        val Wildcard' = Pat'.hide Wildcard
+        val SCon' = Pat'.hide o SCon
+        val Var' = Pat'.hide o Var
+        val Unit' = Pat'.hide Unit
+        val Tuple' = Pat'.hide o Tuple
+        val List' = Pat'.hide o List
+        val Constructor' = Pat'.hide o Constructor
       in
-        Pat'.hide (Constructor (id "Foo", Pat'.hide (Constructor (id "Bar", Pat'.hide (Var (var "x"))))))
+        Tuple' (
+          Constructor' (id "Foo",
+            Constructor' (id "Bar",
+              Tuple' (Var' (var "x"), Unit', [SCon' (SCon.Int 3), Constructor' (id "Baz", Unit')])
+            )
+          ),
+          Wildcard',
+          [List' [Wildcard', Var' (var "y"), Wildcard']]
+        )
       end
   end
 
 structure Dec =
   struct
     datatype ('dec, 'exp) t
-      = Val of TyVar.t seq * (Pat'.t * 'exp) seq1
+      = Val of TyVar.t Seq.t * (Pat'.t * 'exp) Seq1.t
 
     fun map (fdec, fexp) =
-      fn Val (tyvarseq, binds) => Val (tyvarseq, map1 (fn (pat, exp) => (pat, fexp exp)) binds)
+      fn Val (tyvarseq, binds) => Val (tyvarseq, Seq1.map (fn (pat, exp) => (pat, fexp exp)) binds)
   end
 
 structure Exp =
@@ -209,17 +263,17 @@ structure Exp =
     datatype ('dec, 'exp) t
       = Var of LongVId.t Op.t
       | Unit
-      | Tuple of 'exp seq2
+      | Tuple of 'exp Tuple.t
       | List of 'exp list
-      | Sequence of 'exp seq2
+      | Sequence of 'exp Seq2.t
       | Typed of 'exp * Ty'.t
 
     fun map (fdec, fexp) =
       fn Var id          => Var id
        | Unit            => Unit
-       | Tuple exps      => Tuple (map2 fexp exps)
+       | Tuple exps      => Tuple (Tuple.map fexp exps)
        | List exps       => List (List.map fexp exps)
-       | Sequence exps   => Sequence (map2 fexp exps)
+       | Sequence exps   => Sequence (Seq2.map fexp exps)
        | Typed (exp, ty) => Typed (fexp exp, ty)
   end
 
