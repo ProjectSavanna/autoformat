@@ -30,45 +30,55 @@ functor ParseTree2 (
     structure Template2 = AddMeta2 (type meta = meta) (Template2)
   )
 
-structure VId =
-  struct
-    type t = string
-  end
-and TyVar =
-  struct
-    type t = string
-  end
-and TyCon =
-  struct
-    type t = string
-  end
-and Lab =
-  struct
-    type t = string
-  end
-and StrId =
-  struct
-    type t = string
-  end
+local
+  structure Ident =
+    struct
+      type t = string
+      val toString = Fn.id
+    end
+in
+  structure VId   = Ident
+        and TyVar = Ident
+        and TyCon = Ident
+        and Lab   = Ident
+        and StrId = Ident
+end
 
-functor Long (Ident : sig type t end) =
+functor Long (Ident : SHOW) =
   struct
-    datatype 'long t
-      = Ident of Ident.t
-      | Module of StrId.t * 'long
+    local
+      structure Template' =
+        struct
+          datatype 'long t
+            = Ident of Ident.t
+            | Module of StrId.t * 'long
 
-    fun map f =
-      fn Ident id             => Ident id
-       | Module (strid, long) => Module (strid, f long)
+          fun map f =
+            fn Ident id             => Ident id
+             | Module (strid, long) => Module (strid, f long)
+        end
+
+      structure R = Recursive (Template')
+    in
+      open R
+
+      structure Template = Template'
+
+      val toString =
+        R.fold (
+          let
+            open Template
+          in
+            fn Ident id             => Ident.toString id
+             | Module (strid, long) => strid ^ "." ^ long
+          end
+        )
+    end
   end
 
 structure LongVId   = Long (VId)
       and LongTyCon = Long (TyCon)
       and LongStrId = Long (StrId)
-
-structure LongVId'   = ParseTree (LongVId)
-      and LongTyCon' = ParseTree (LongTyCon)
-      and LongStrId' = ParseTree (LongStrId)
 
 structure SCon =
   struct
@@ -78,6 +88,13 @@ structure SCon =
       | Word of word
       | Char of char
       | String of string
+
+    val toString =
+      fn Int i    => Int.toString i
+       | Real r   => Real.toString r
+       | Word w   => Word.toString w
+       | Char c   => Char.toString c
+       | String s => String.toString s
   end
 
 structure Op =
@@ -103,7 +120,7 @@ structure Ty =
   struct
     datatype 'ty t
       = Var of TyVar.t
-      | Cons of 'ty seq * LongTyCon'.t
+      | Cons of 'ty seq * LongTyCon.t
       | Record of (Lab.t * 'ty) list
       | Tuple of 'ty seq2
       | Arrow of { dom : 'ty, cod : 'ty }
@@ -123,12 +140,12 @@ structure Pat =
     datatype 'pat t
       = Wildcard
       | SCon of SCon.t
-      | Var of LongVId'.t Op.t
+      | Var of LongVId.t Op.t
       (* | Record *)
       | Unit
       | Tuple of 'pat seq2
       | List of 'pat list
-      | Constructor of LongVId'.t Op.t * 'pat
+      | Constructor of LongVId.t Op.t * 'pat
 
     fun map f =
       fn Wildcard              => Wildcard
@@ -142,6 +159,42 @@ structure Pat =
 
 structure Pat' = Recursive (Pat)
 
+structure Prototype =
+  struct
+    val prettyPrintPat =
+      #string o Pat'.fold (
+        let
+          open Pat
+
+          type t = { atomic : bool, string : string }
+          val aux = fn b => fn s => { atomic = b, string = s }
+          val atomic = aux true
+          val general = aux false
+          val wrap = fn { atomic, string } : t => if atomic then string else "(" ^ string ^ ")"
+        in
+          fn Wildcard              => atomic "_"
+           | SCon scon             => atomic (SCon.toString scon)
+           | Var id                => atomic (Op.toString LongVId.toString id)
+           | Constructor (id, pat) => general (Op.toString LongVId.toString id ^ " " ^ wrap pat)
+        end
+    )
+
+    local
+      open LongVId
+    in
+      val Ident' = hide o Template.Ident
+      val Module' = hide o Template.Module
+    end
+    val id = fn s => { hasOp = false, data = Module' ("Test", Ident' s) }
+    val var = fn s => { hasOp = false, data = Ident' s }
+    val ex =
+      let
+        open Pat
+      in
+        Pat'.hide (Constructor (id "Foo", Pat'.hide (Constructor (id "Bar", Pat'.hide (Var (var "x"))))))
+      end
+  end
+
 structure Dec =
   struct
     datatype ('dec, 'exp) t
@@ -154,7 +207,7 @@ structure Dec =
 structure Exp =
   struct
     datatype ('dec, 'exp) t
-      = Var of LongVId'.t Op.t
+      = Var of LongVId.t Op.t
       | Unit
       | Tuple of 'exp seq2
       | List of 'exp list
