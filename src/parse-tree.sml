@@ -70,6 +70,29 @@ structure LongVId'   = ParseTree (LongVId)
       and LongTyCon' = ParseTree (LongTyCon)
       and LongStrId' = ParseTree (LongStrId)
 
+structure SCon =
+  struct
+    datatype t
+      = Int of int
+      | Real of real
+      | Word of word
+      | Char of char
+      | String of string
+  end
+
+structure Op =
+  struct
+    type 'a t = { hasOp : bool, data : 'a }
+
+    val map = fn f => fn { hasOp , data } =>
+      { hasOp = hasOp, data = f data }
+
+    val toString = fn f => fn { hasOp, data } =>
+      if hasOp
+        then "op " ^ f data
+        else f data
+  end
+
 type 'a seq = 'a list
 type 'a seq1 = 'a * 'a seq
 val map1 = fn f => fn (x1, xs) => (f x1, List.map f xs)
@@ -99,9 +122,22 @@ structure Pat =
   struct
     datatype 'pat t
       = Wildcard
+      | SCon of SCon.t
+      | Var of LongVId'.t Op.t
+      (* | Record *)
+      | Unit
+      | Tuple of 'pat seq2
+      | List of 'pat list
+      | Constructor of LongVId'.t Op.t * 'pat
 
     fun map f =
-      fn Wildcard => Wildcard
+      fn Wildcard              => Wildcard
+       | SCon scon             => SCon scon
+       | Var id                => Var id
+       | Unit                  => Unit
+       | Tuple pats            => Tuple (map2 f pats)
+       | List pats             => List (List.map f pats)
+       | Constructor (id, pat) => Constructor (id, f pat)
   end
 
 structure Pat' = Recursive (Pat)
@@ -118,7 +154,7 @@ structure Dec =
 structure Exp =
   struct
     datatype ('dec, 'exp) t
-      = VId of { op' : bool, id : LongVId'.t }
+      = Var of LongVId'.t Op.t
       | Unit
       | Tuple of 'exp seq2
       | List of 'exp list
@@ -126,12 +162,12 @@ structure Exp =
       | Typed of 'exp * Ty'.t
 
     fun map (fdec, fexp) =
-      fn VId { op' = op', id = id }  => VId { op' = op', id = id }
-       | Unit                        => Unit
-       | Tuple exps                  => Tuple (map2 fexp exps)
-       | List exps                   => List (List.map fexp exps)
-       | Sequence exps               => Sequence (map2 fexp exps)
-       | Typed (exp, ty)             => Typed (fexp exp, ty)
+      fn Var id          => Var id
+       | Unit            => Unit
+       | Tuple exps      => Tuple (map2 fexp exps)
+       | List exps       => List (List.map fexp exps)
+       | Sequence exps   => Sequence (map2 fexp exps)
+       | Typed (exp, ty) => Typed (fexp exp, ty)
   end
 
 structure DecExp' =
