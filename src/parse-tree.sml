@@ -115,7 +115,7 @@ structure Op =
         else f data
   end
 
-structure SeqFormat =
+structure Util =
   struct
     local
       fun aux stop sep f nil        = stop
@@ -124,6 +124,8 @@ structure SeqFormat =
     in
       val format = fn { start, stop, sep } => fn f => fn l => start ^ aux stop sep f l
     end
+
+    val hasType = fn (obj, ty) => obj ^ " : " ^ ty
   end
 
 structure List =
@@ -131,7 +133,7 @@ structure List =
     open List
 
     type 'a t = 'a list
-    val toString = fn f => SeqFormat.format { start = "[", stop = "]", sep = ", " } f
+    val toString = fn f => Util.format { start = "[", stop = "]", sep = ", " } f
   end
 
 structure Seq =
@@ -191,15 +193,19 @@ structure Pat =
       | Tuple of 'pat Tuple.t
       | List of 'pat list
       | Constructor of LongVId.t Op.t * 'pat
+      | InfixConstructor of 'pat * VId.t * 'pat
+      | Typed of 'pat * Ty'.t
 
     fun map f =
-      fn Wildcard              => Wildcard
-       | SCon scon             => SCon scon
-       | Var id                => Var id
-       | Unit                  => Unit
-       | Tuple pats            => Tuple (Tuple.map f pats)
-       | List pats             => List (List.map f pats)
-       | Constructor (id, pat) => Constructor (id, f pat)
+      fn Wildcard                          => Wildcard
+       | SCon scon                         => SCon scon
+       | Var id                            => Var id
+       | Unit                              => Unit
+       | Tuple pats                        => Tuple (Tuple.map f pats)
+       | List pats                         => List (List.map f pats)
+       | Constructor (id, pat)             => Constructor (id, f pat)
+       | InfixConstructor (pat1, id, pat2) => InfixConstructor (f pat1, id, f pat2)
+       | Typed (pat, ty)                   => Typed (f pat, ty)
   end
 
 structure Pat' = Recursive (Pat)
@@ -239,7 +245,27 @@ structure Prototype =
     val id = fn s => { hasOp = false, data = Module' ($"Test", Ident' ($s)) }
     val var = fn s => { hasOp = false, data = Ident' ($s) }
 
-    structure Ty =
+    local
+      open Ty
+    in
+      val Var' = Ty'.hide o Var
+      val Cons' = Ty'.hide o Cons
+      val Tuple' = Ty'.hide o Tuple
+      val Arrow' = Ty'.hide o Arrow
+
+      val Ident' = LongTyCon.hide o LongTyCon.Template.Ident
+      val Module' = LongTyCon.hide o LongTyCon.Template.Module
+
+      infixr ==>
+      val op ==> = fn (dom, cod) => Arrow' { dom = dom, cod = cod }
+      infixr **
+      val op ** = fn (ty1, ty2) => Tuple' (ty1, ty2, [])
+
+      val ty = fn s => Module' ($s, Ident' ($"t"))
+      val dott = fn s => Cons' ([], ty s)
+    end
+
+    structure PrintTy =
       struct
         structure Prec =
           struct
@@ -265,14 +291,13 @@ structure Prototype =
 
         structure TyPrec = Precedence (Prec)
 
-
         val prettyPrint =
           Ty'.fold (
             let
               open Ty
 
               val intercalate = fn sep => fn (ty1, ty2, tys) =>
-                SeqFormat.format { start = "", stop = "", sep = sep } Fn.id (ty1 :: ty2 :: tys)
+                Util.format { start = "", stop = "", sep = sep } Fn.id (ty1 :: ty2 :: tys)
             in
               fn Var tyvar                      => TyPrec.hide Prec.Atomic (TyVar.toString tyvar)
                | Cons (tyseq, longtycon)        => 
@@ -284,55 +309,54 @@ structure Prototype =
                       | x1 :: x2 :: xs => Tuple.toString (TyPrec.show Prec.zero) (x1, x2, xs) ^ " "
                     ) ^ LongTyCon.toString longtycon
                   )
-               | Record tyrows                  => TyPrec.hide Prec.Atomic (SeqFormat.format { start = "{ ", stop = " }", sep = ", " } (fn (lab, ty) => Lab.toString lab ^ " : " ^ TyPrec.show Prec.zero ty) tyrows)
+               | Record tyrows                  => TyPrec.hide Prec.Atomic (Util.format { start = "{ ", stop = " }", sep = ", " } (fn (lab, ty) => Util.hasType (Lab.toString lab, TyPrec.show Prec.zero ty)) tyrows)
                | Tuple tys                      => TyPrec.hide Prec.Tuple (intercalate " * " (Seq2.map (TyPrec.show (Prec.succ Prec.Tuple)) tys))
                | Arrow { dom = dom, cod = cod } => TyPrec.hide Prec.Arrow (TyPrec.show (Prec.succ Prec.Arrow) dom ^ " -> " ^ TyPrec.show Prec.Arrow cod)
             end
           )
 
         val ex =
-          let
-            open Ty
-            val Var' = Ty'.hide o Var
-            val Cons' = Ty'.hide o Cons
-            val Tuple' = Ty'.hide o Tuple
-            val Arrow' = Ty'.hide o Arrow
-
-            val Ident' = LongTyCon.hide o LongTyCon.Template.Ident
-            val Module' = LongTyCon.hide o LongTyCon.Template.Module
-
-            infixr ==>
-            val op ==> = fn (dom, cod) => Arrow' { dom = dom, cod = cod }
-            infixr **
-            val op ** = fn (ty1, ty2) => Tuple' (ty1, ty2, [])
-
-            val ty = fn s => Module' ($s, Ident' ($"t"))
-            val dott = fn s => Cons' ([], ty s)
-          in
-            (* Tuple' (Tuple' (dott "Int", dott "String", []), dott "Bool", []) *)
-            (* Arrow' { dom = Tuple' (dott "Int", dott "String", []), cod = Arrow' { dom = dott "Bool", cod = dott "Real" } } *)
-            (* dott "List" ==> Tuple' (dott "Int", dott "String", [dott "Foo", dott "Bar" ** dott "Baz", dott "Qux"]) ==> (dott "Bool" ** dott "Real") *)
-            Cons' ([dott "Int" ** dott "String"], ty "List") ==> Cons' ([dott "Bool"], ty "List")
-            (* Cons' ([Var' ($"'a"), Cons' ([Var' ($"'b"), Cons' ([], Ident' ($"int"))], ty "Either")], ty "List") *)
-          end
+          (* Tuple' (Tuple' (dott "Int", dott "String", []), dott "Bool", []) *)
+          (* Arrow' { dom = Tuple' (dott "Int", dott "String", []), cod = Arrow' { dom = dott "Bool", cod = dott "Real" } } *)
+          (* dott "List" ==> Tuple' (dott "Int", dott "String", [dott "Foo", dott "Bar" ** dott "Baz", dott "Qux"]) ==> (dott "Bool" ** dott "Real") *)
+          Cons' ([dott "Int" ** dott "String"], ty "List") ==> Cons' ([dott "Bool"], ty "List")
+          (* Cons' ([Var' ($"'a"), Cons' ([Var' ($"'b"), Cons' ([], Ident' ($"int"))], ty "Either")], ty "List") *)
       end
 
-    structure Pat =
+    local
+      open Pat
+    in
+      val Wildcard' = Pat'.hide Wildcard
+      val SCon' = Pat'.hide o SCon
+      val Var' = Pat'.hide o Var
+      val Unit' = Pat'.hide Unit
+      val Tuple' = Pat'.hide o Tuple
+      val List' = Pat'.hide o List
+      val Constructor' = Pat'.hide o Constructor
+      val Typed' = Pat'.hide o Typed
+    end
+
+    structure PrintPat =
       struct
         structure Prec =
           struct
-            datatype t = Complex | Atomic
+            datatype t = Typed | Complex | Atomic
 
             val eq = op =
             val compare =
-              fn (Complex, Complex) => EQUAL
-               | (Complex, Atomic ) => LESS
+              fn (Typed  , Typed  ) => EQUAL
+               | (Typed  , _      ) => LESS
+               | (Complex, Typed  ) => GREATER
+               | (Complex, Complex) => EQUAL
+               | (Complex, _      ) => LESS
+               | (Atomic , Typed  ) => GREATER
                | (Atomic , Complex) => GREATER
                | (Atomic , Atomic ) => EQUAL
 
-            val zero = Complex
+            val zero = Typed
             val succ =
-             fn Complex => Atomic
+             fn Typed   => Complex
+              | Complex => Atomic
               | Atomic  => Atomic
           end
         structure Atomic = Precedence (Prec)
@@ -349,32 +373,23 @@ structure Prototype =
                | Tuple pats            => Atomic.hide Prec.Atomic (Tuple.toString (Atomic.show Prec.zero) pats)
                | List pats             => Atomic.hide Prec.Atomic (List.toString (Atomic.show Prec.zero) pats)
                | Constructor (id, pat) => Atomic.hide Prec.Complex (Op.toString LongVId.toString id ^ " " ^ Atomic.show Prec.Atomic pat)
+               | InfixConstructor _    => raise Fail "TODO"
+               | Typed (pat, ty)       => Atomic.hide Prec.Typed (Util.hasType (Atomic.show Prec.Typed pat, PrintTy.TyPrec.show PrintTy.Prec.zero (PrintTy.prettyPrint ty)))
             end
           )
 
         val ex =
-          let
-            open Pat
-            val Wildcard' = Pat'.hide Wildcard
-            val SCon' = Pat'.hide o SCon
-            val Var' = Pat'.hide o Var
-            val Unit' = Pat'.hide Unit
-            val Tuple' = Pat'.hide o Tuple
-            val List' = Pat'.hide o List
-            val Constructor' = Pat'.hide o Constructor
-          in
-            Constructor' (id "Qux",
-              Tuple' (
-                Constructor' (id "Foo",
-                  Constructor' (id "Bar",
-                    Tuple' (Var' (var "x"), Unit', [SCon' (SCon.Int 3), Constructor' (id "Baz", Unit')])
-                  )
-                ),
-                Wildcard',
-                [List' [Wildcard', Var' (var "y"), Wildcard']]
-              )
+          Constructor' (id "Qux",
+            Tuple' (
+              Constructor' (id "Foo",
+                Constructor' (id "Bar",
+                  Tuple' (Var' (var "x"), Unit', [SCon' (SCon.Int 3), Constructor' (id "Baz", Unit')])
+                )
+              ),
+              Typed' (Wildcard', dott "Int"),
+              [List' [Wildcard', Var' (var "y"), Wildcard']]
             )
-          end
+          )
       end
   end
 
