@@ -195,26 +195,47 @@ structure Pat =
 
 structure Pat' = Recursive (Pat)
 
+structure Atomic :>
+  sig
+    include FUNCTOR
+
+    val atomic : 'a -> 'a t
+    and complex : 'a -> 'a t
+
+    val extract : 'a t -> 'a
+
+    val toString : string t -> string
+  end =
+  struct
+    type 'a t = { atomic : bool, data : 'a }
+
+    val map = fn f => fn { atomic, data } => { atomic = atomic, data = f data }
+
+    val atomic = fn x => { atomic = true, data = x }
+    and complex = fn x => { atomic = false, data = x }
+
+    val extract : 'a t -> 'a = #data
+
+    val toString = fn { atomic, data = string } : string t =>
+      if atomic
+        then string
+        else "(" ^ string ^ ")"
+  end
+
 structure Prototype =
   struct
     val prettyPrintPat =
-      #string o Pat'.fold (
+      Pat'.fold (
         let
           open Pat
-
-          type t = { atomic : bool, string : string }
-          val aux = fn b => fn s => { atomic = b, string = s } : t
-          val atomic = aux true
-          val general = aux false
-          val wrap = fn { atomic, string } : t => if atomic then string else "(" ^ string ^ ")"
         in
-          fn Wildcard              => atomic "_"
-           | SCon scon             => atomic (SCon.toString scon)
-           | Var id                => atomic (Op.toString LongVId.toString id)
-           | Unit                  => atomic "()"  (* TODO: factor out *)
-           | Tuple pats            => atomic (Tuple.toString #string pats)
-           | List pats             => atomic (List.toString #string pats)
-           | Constructor (id, pat) => general (Op.toString LongVId.toString id ^ " " ^ wrap pat)
+          fn Wildcard              => Atomic.atomic "_"
+           | SCon scon             => Atomic.atomic (SCon.toString scon)
+           | Var id                => Atomic.atomic (Op.toString LongVId.toString id)
+           | Unit                  => Atomic.atomic "()"  (* TODO: factor out *)
+           | Tuple pats            => Atomic.atomic (Tuple.toString Atomic.extract pats)
+           | List pats             => Atomic.atomic (List.toString Atomic.extract pats)
+           | Constructor (id, pat) => Atomic.complex (Op.toString LongVId.toString id ^ " " ^ Atomic.toString pat)
         end
     )
 
@@ -237,14 +258,16 @@ structure Prototype =
         val List' = Pat'.hide o List
         val Constructor' = Pat'.hide o Constructor
       in
-        Tuple' (
-          Constructor' (id "Foo",
-            Constructor' (id "Bar",
-              Tuple' (Var' (var "x"), Unit', [SCon' (SCon.Int 3), Constructor' (id "Baz", Unit')])
-            )
-          ),
-          Wildcard',
-          [List' [Wildcard', Var' (var "y"), Wildcard']]
+        Constructor' (id "Qux",
+          Tuple' (
+            Constructor' (id "Foo",
+              Constructor' (id "Bar",
+                Tuple' (Var' (var "x"), Unit', [SCon' (SCon.Int 3), Constructor' (id "Baz", Unit')])
+              )
+            ),
+            Wildcard',
+            [List' [Wildcard', Var' (var "y"), Wildcard']]
+          )
         )
       end
   end
