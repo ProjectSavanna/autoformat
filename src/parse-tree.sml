@@ -29,11 +29,16 @@ functor ParseTree2 (
     structure Template1 = AddMeta2 (type meta = meta) (Template1)
     structure Template2 = AddMeta2 (type meta = meta) (Template2)
   )
+signature SYMBOL =
+  sig
+    include READ SHOW
+  end
 
 local
-  structure Ident =
+  structure Ident :> SYMBOL =
     struct
       type t = string
+      val fromString = SOME
       val toString = Fn.id
     end
 in
@@ -70,7 +75,7 @@ functor Long (Ident : SHOW) =
             open Template
           in
             fn Ident id             => Ident.toString id
-             | Module (strid, long) => strid ^ "." ^ long
+             | Module (strid, long) => StrId.toString strid ^ "." ^ long
           end
         )
     end
@@ -169,7 +174,7 @@ structure Ty =
        | Arrow { dom = dom, cod = cod } => Arrow { dom = f dom, cod = f cod }
   end
 
-structure Ty' = ParseTree (Ty)
+structure Ty' = Recursive (Ty)
 
 structure Pat =
   struct
@@ -224,6 +229,24 @@ structure Atomic :>
 
 structure Prototype =
   struct
+    val prettyPrintTy =
+      Ty'.fold (
+        let
+          open Ty
+
+          val seqToString = fn f =>
+            fn nil            => ""
+             | x :: nil       => f x ^ " "
+             | x1 :: x2 :: xs => Tuple.toString f (x1, x2, xs) ^ " "
+        in
+          fn Var tyvar                      => Atomic.atomic (TyVar.toString tyvar)
+           | Cons (tyseq, longtycon)        => Atomic.atomic (seqToString Atomic.extract tyseq ^ LongTyCon.toString longtycon)
+           | Record tyrows                  => raise Fail "TODO"
+           | Tuple tys                      => raise Fail "TODO"
+           | Arrow { dom = dom, cod = cod } => raise Fail "TODO"
+        end
+      )
+
     val prettyPrintPat =
       Pat'.fold (
         let
@@ -245,9 +268,25 @@ structure Prototype =
       val Ident' = hide o Template.Ident
       val Module' = hide o Template.Module
     end
-    val id = fn s => { hasOp = false, data = Module' ("Test", Ident' s) }
-    val var = fn s => { hasOp = false, data = Ident' s }
-    val ex =
+    val $ = valOf o StrId.fromString
+    val id = fn s => { hasOp = false, data = Module' ($"Test", Ident' ($s)) }
+    val var = fn s => { hasOp = false, data = Ident' ($s) }
+
+    val exTy =
+      let
+        open Ty
+        val Var' = Ty'.hide o Var
+        val Cons' = Ty'.hide o Cons
+
+        val Ident' = LongTyCon.hide o LongTyCon.Template.Ident
+        val Module' = LongTyCon.hide o LongTyCon.Template.Module
+
+        val ty = fn s => Module' ($s, Ident' ($"t"))
+      in
+        Cons' ([Var' ($"'a"), Cons' ([Var' ($"'b"), Cons' ([], Ident' ($"int"))], ty "Either")], ty "List")
+      end
+
+    val exPat =
       let
         open Pat
         val Wildcard' = Pat'.hide Wildcard
