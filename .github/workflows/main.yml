@@ -29,24 +29,26 @@ jobs:
       - name: Build runner
         run: |
           smackage source typeclasses git git://github.com/ProjectSavanna/typeclasses.git
+          smackage source bananas git git://github.com/ProjectSavanna/bananas.git
           smackage refresh
           smackage get typeclasses v1
+          smackage get bananas v1
           echo "SMACKAGE $HOME/.smackage/lib" > pathconfig
-          mkdir bin
-          CM_LOCAL_PATHCONFIG=pathconfig ml-build run.cm Run.run bin/run
-          rm pathconfig
+      #     mkdir bin
+      #     CM_LOCAL_PATHCONFIG=pathconfig ml-build run.cm Run.run bin/run
+      #     rm pathconfig
 
-      - name: Run formatter
-        run: |
-          for file in test/*.input.sml; do
-            sml @SMLload=bin/run "$file" "test/$(basename "$file" .input.sml).output.sml" || (
-              echo "::error::Error when formatting test case file: $file" && exit 1
-            )
-          done
+      # - name: Run formatter
+      #   run: |
+      #     for file in test/*.input.sml; do
+      #       sml @SMLload=bin/run "$file" "test/$(basename "$file" .input.sml).output.sml" || (
+      #         echo "::error::Error when formatting test case file: $file" && exit 1
+      #       )
+      #     done
 
-      - name: Update test case outputs
-        uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          file_pattern: test/*.output.sml
-          commit_message: Update test case outputs
-        if: ${{ github.event_name == 'push' && matrix.smlnj-version == '110.98' }}
+      # - name: Update test case outputs
+      #   uses: stefanzweifel/git-auto-commit-action@v4
+      #   with:
+      #     file_pattern: test/*.output.sml
+      #     commit_message: Update test case outputs
+      #   if: ${{ github.event_name == 'push' && matrix.smlnj-version == '110.98' }}
